@@ -24,7 +24,9 @@ In the [prototype discussion](https://chatgpt.com/share/6ae86445-8b50-83ed-9f24-
   MATVT superuser access in Magisk. Other keys remain available while root is requested.
 - Briefly press PTT while enabled to switch between mouse and scroll modes.
 - D-pad arrows move the cursor in mouse mode and perform swipes in scroll mode.
-- Press the D-pad center/Enter for a tap. Hold it for a synthetic long press.
+- Press the D-pad center/Enter to put a virtual finger down at the cursor. Release
+  the key to lift it. Holding the key keeps the same contact active for as long
+  as the key is held; the receiving app determines its long-press behavior.
 - The activation key defaults to **289**, including the empty custom-key field.
   Existing explicit overrides remain in effect; uncheck **Override Activation Key**
   to use the new default.
@@ -52,25 +54,37 @@ screen edges, the cursor body may be clipped rather than shifting that coordinat
 
 ## Implementation and limitations
 
-`RootShell` keeps one `su` process open and verifies UID 0 before enabling mouse
-mode. Commands run on a background worker. Each gesture still starts Android's
-`/system/bin/input` command; actual latency must be measured on the phone.
+`RootInput` starts a persistent Java process using `su -c` and `app_process`, loading
+`RootTouchServer` from this app's APK. A versioned handshake verifies UID 0 before
+enabling mouse mode. Commands and acknowledgements use private stdin/stdout pipes;
+no per-gesture shell or `/system/bin/input` process is launched.
 
-Taps use `input touchscreen tap`; long presses use a stationary `input touchscreen
-swipe`; scrolling uses 250 ms swipes. Coordinates include the overlay's on-screen
-offset and stay inside its bounds.
+The server injects `MotionEvent`s through Android's `InputManager` (or
+`InputManagerGlobal` on newer releases). DOWN, MOVE, UP and CANCEL belonging to a
+contact share the same `downTime`, pointer ID, touchscreen source and display ID.
+Short and long presses use the same DOWN/UP sequence, without a fixed-duration
+swipe or a second tap on release. Key auto-repeat does not inject additional DOWNs.
+Pointer movement stays disabled while the center key is held; dragging is not implemented.
 
-There is at most one root operation in flight. Scroll repetition starts only after
-the preceding swipe completes. Releasing the direction or changing modes prevents
-further repetition; an already-started swipe finishes normally. Additional taps
-while a gesture is running are rejected with a short busy message rather than
-executed later in a different app. Long press simulates a fixed-duration touch;
-holding the button and moving the pointer is not a drag operation.
+There is at most one gesture in flight. A terminal UP is reserved even if DOWN is
+still awaiting acknowledgement. Leaving mouse mode promotes a queued UP to CANCEL;
+an unsent, cancelled DOWN is skipped. Shutdown sends CANCEL/QUIT before disposing
+the process. Scrolling still uses 250 ms swipes, repeated only after completion;
+an already-started swipe finishes normally. Additional presses while a previous
+gesture is finishing are rejected with a busy message instead of replayed later.
 
-Root authorization has a 30-second timeout; input commands have a 5-second timeout.
-On failure, MATVT restores normal D-pad input and logs the reason under
-**`MATVT-Root`**. After correcting authorization, hold PTT to retry. Disabling the
-accessibility service releases the root process and cursor overlay.
+While the key is held, the service sends a heartbeat once per second. A server-side
+watchdog cancels the contact and exits after approximately four seconds without a
+heartbeat, covering a stalled/disconnected client. This is a connection lease, not
+a maximum hold duration. EOF, QUIT, command failures, cancelled key events, mode
+changes and service shutdown also trigger cancellation. Back/Home/app-switch/power
+keys cancel a held contact before being passed through.
+
+Root startup has a 30-second timeout; individual acknowledgements have a 5-second
+timeout. These timeouts do not limit a healthy hold. On failure, MATVT restores
+normal D-pad input and logs the reason under **`MATVT-Root`**. After correcting
+authorization, hold PTT to retry. Disabling the accessibility service releases the
+root process and cursor overlay.
 
 The root path does not use network ADB or require the `sonim_faketouch` module.
 
@@ -83,9 +97,17 @@ JAVA_HOME=$(/usr/libexec/java_home -v 11) bash ./gradlew --no-daemon --console=p
   :app:testDebugUnitTest :app:assembleDebug
 ```
 
-The unit tests cover session reuse, root denial, missing `su`, process exit,
-command errors, timeouts, backpressure, shutdown and swipe bounds. They do not
-prove touch injection on the physical device.
+The unit tests cover contact lifetime and timestamps, fast release before DOWN
+acknowledgement, pending-UP cancellation, bounded heartbeat traffic, root identity,
+startup cancellation, failures, shutdown and swipe bounds. They do not prove touch
+injection on the physical device.
+
+The actual APK's server was also exercised in an isolated Android emulator via
+`app_process`, with a separate touch-receiving activity: short tap, a six-second
+hold with native long-click detection, explicit CANCEL, EOF cleanup, heartbeat
+expiry, scrolling and QUIT. All contacts kept their original downTime and ended.
+For this diagnostic route only, the server accepts Android's shell UID 2000;
+the app's client still requires root UID 0 in its handshake.
 
 The standalone `:app:lintDebug` task currently reports the inherited
 `ExpiredTargetSdkVersion` error for `targetSdkVersion 29` (a Google Play publishing
@@ -96,13 +118,16 @@ On the XP5900, check in TouchDetector and then a normal app:
 
 1. Grant overlay/accessibility permissions and enable the mouse with PTT.
 2. Grant root to MATVT. Verify a tap at the cursor position, including near edges.
-3. Check both short and long confirmation presses.
+3. Check a short press, then hold the center key for 5–10 seconds. Verify there is
+   one DOWN, no intermediate UP, and one UP when you release the key.
 4. Switch to scroll mode, hold/release each direction, and verify scrolling stops
    after the currently running swipe.
 5. Hold PTT to return to normal D-pad navigation. Check that auto-repeat does not
    toggle modes multiple times.
 6. Deny MATVT root access and reconnect its accessibility service. Verify that
-   failed activation leaves normal navigation working; grant access and retry.
+    failed activation leaves normal navigation working; grant access and retry.
+7. While holding the center key, switch off mouse mode or stop the accessibility
+   service. The target app should receive CANCEL rather than an extra click.
 
-Successful operations log their execution time as `Root tap`, `Root long press`
-or `Root scroll`. Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
+Successful operations log their acknowledgement time as `Root down`, `Root up`,
+`Root cancel` or `Root scroll`. Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.

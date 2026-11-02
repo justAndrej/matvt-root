@@ -8,7 +8,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.KeyEvent;
-import android.view.ViewConfiguration;
 import android.widget.Toast;
 
 import java.util.HashSet;
@@ -26,7 +25,7 @@ public class MouseEmulationEngine {
     private static final int NO_KEY = -1;
 
     private final PointerControl pointer;
-    private final RootShell rootShell = new RootShell();
+    private final RootInput rootInput;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Set<Integer> consumedKeys = new HashSet<>();
     private final Runnable hideCursor;
@@ -44,11 +43,11 @@ public class MouseEmulationEngine {
     private boolean bossLongPress;
     private Runnable bossHold;
     private int clickKey = NO_KEY;
-    private boolean clickLongPress;
-    private Runnable clickHold;
-    private PointF clickPoint;
+    private boolean touchAccepted;
+    private Runnable touchHeartbeat;
 
     public MouseEmulationEngine(Context context, OverlayView overlay) {
+        rootInput = new RootInput(context.getApplicationInfo().sourceDir);
         MouseCursorView cursor = new MouseCursorView(context);
         overlay.addFullScreenLayer(cursor);
         pointer = new PointerControl(overlay, cursor);
@@ -83,6 +82,12 @@ public class MouseEmulationEngine {
             return true;
         }
         if (!enabled) return false;
+
+        if (event.getAction() == KeyEvent.ACTION_DOWN && (key == KeyEvent.KEYCODE_BACK
+                || key == KeyEvent.KEYCODE_HOME || key == KeyEvent.KEYCODE_APP_SWITCH
+                || key == KeyEvent.KEYCODE_POWER)) {
+            cancelClick();
+        }
 
         if (isClickKey(key)) {
             handleClick(event);
@@ -138,7 +143,7 @@ public class MouseEmulationEngine {
         enabling = true;
         int generation = ++modeGeneration;
         showMessage(R.string.root_requesting);
-        boolean accepted = rootShell.prepare(result -> handler.post(() -> {
+        boolean accepted = rootInput.prepare(result -> handler.post(() -> {
             if (destroyed || generation != modeGeneration) return;
             enabling = false;
             if (!result.isSuccess()) {
@@ -166,36 +171,45 @@ public class MouseEmulationEngine {
             handler.removeCallbacks(hideCursor);
             pointer.reappear();
             clickKey = event.getKeyCode();
-            clickPoint = pointer.getPointerLocationOnScreen();
-            clickLongPress = false;
-            clickHold = () -> {
-                clickLongPress = true;
-                sendGesture("long press", RootGesture.longPress(Math.round(clickPoint.x),
-                        Math.round(clickPoint.y), ViewConfiguration.getLongPressTimeout() + 150));
-            };
-            handler.postDelayed(clickHold, ViewConfiguration.getLongPressTimeout());
-        } else if (event.getAction() == KeyEvent.ACTION_UP && event.getKeyCode() == clickKey) {
-            handler.removeCallbacks(clickHold);
-            if (!event.isCanceled() && !clickLongPress) {
-                if (event.getEventTime() - event.getDownTime() >= ViewConfiguration.getLongPressTimeout()) {
-                    sendGesture("long press", RootGesture.longPress(Math.round(clickPoint.x),
-                            Math.round(clickPoint.y), ViewConfiguration.getLongPressTimeout() + 150));
-                } else {
-                    sendGesture("tap", RootGesture.tap(Math.round(clickPoint.x), Math.round(clickPoint.y)));
-                }
+            PointF point = pointer.getPointerLocationOnScreen();
+            touchAccepted = rootInput.down(Math.round(point.x), Math.round(point.y),
+                    result -> handler.post(() -> reportTouch("down", result)));
+            if (touchAccepted) {
+                touchHeartbeat = new Runnable() {
+                    @Override
+                    public void run() {
+                        if (destroyed || !enabled || clickKey == NO_KEY || !touchAccepted) return;
+                        rootInput.heartbeat(result -> handler.post(() -> {
+                            if (!result.isSuccess()) reportTouch("heartbeat", result);
+                        }));
+                        handler.postDelayed(this, 1000);
+                    }
+                };
+                handler.postDelayed(touchHeartbeat, 1000);
+            } else {
+                showMessage(R.string.root_busy);
             }
+        } else if (event.getAction() == KeyEvent.ACTION_UP && event.getKeyCode() == clickKey) {
+            if (touchHeartbeat != null) handler.removeCallbacks(touchHeartbeat);
+            if (touchAccepted) {
+                // This is accepted even if the server has not acknowledged DOWN yet.
+                boolean cancelled = event.isCanceled();
+                rootInput.finishTouch(cancelled,
+                        result -> handler.post(() -> reportTouch(cancelled ? "cancel" : "up", result)));
+            }
+            touchAccepted = false;
             clickKey = NO_KEY;
             scheduleHide();
         }
     }
 
-    private void sendGesture(String name, String command) {
-        int generation = modeGeneration;
-        boolean accepted = rootShell.execute(command, result -> handler.post(() -> {
-            if (destroyed || generation != modeGeneration) return;
-            reportGesture(name, result);
-        }));
-        if (!accepted) showMessage(R.string.root_busy);
+    private void reportTouch(String name, RootInput.Result result) {
+        if (destroyed) return;
+        if (!result.isSuccess() && !enabled && !enabling) {
+            Log.e(LOG_TAG, "Root " + name + " cleanup: " + result.output);
+            return;
+        }
+        reportGesture(name, result);
     }
 
     private void startMotion(int key, int direction, boolean scroll) {
@@ -219,7 +233,7 @@ public class MouseEmulationEngine {
                 String command = RootGesture.scroll(Math.round(point.x), Math.round(point.y),
                         bounds.left, bounds.top, bounds.right, bounds.bottom,
                         -PointerControl.dirX[direction], -PointerControl.dirY[direction]);
-                boolean accepted = rootShell.execute(command, result -> handler.post(() -> {
+                boolean accepted = rootInput.swipe(command, result -> handler.post(() -> {
                     if (destroyed) return;
                     if (!reportGesture("scroll", result)) return;
                     if (enabled && generation == motionGeneration) {
@@ -233,7 +247,7 @@ public class MouseEmulationEngine {
         handler.post(motion);
     }
 
-    private boolean reportGesture(String name, RootShell.Result result) {
+    private boolean reportGesture(String name, RootInput.Result result) {
         if (!result.isSuccess()) {
             rootFailed(result);
             return false;
@@ -242,7 +256,7 @@ public class MouseEmulationEngine {
         return true;
     }
 
-    private void rootFailed(RootShell.Result result) {
+    private void rootFailed(RootInput.Result result) {
         Log.e(LOG_TAG, "Root input failed: exit=" + result.exitCode + ", " + result.output);
         disableMouse();
         showMessage(R.string.root_unavailable);
@@ -256,7 +270,10 @@ public class MouseEmulationEngine {
     }
 
     private void cancelClick() {
-        if (clickHold != null) handler.removeCallbacks(clickHold);
+        if (touchHeartbeat != null) handler.removeCallbacks(touchHeartbeat);
+        // Also promote an already queued UP to CANCEL when leaving mouse mode.
+        rootInput.finishTouch(true, result -> handler.post(() -> reportTouch("cancel", result)));
+        touchAccepted = false;
         clickKey = NO_KEY;
     }
 
@@ -290,7 +307,7 @@ public class MouseEmulationEngine {
         destroyed = true;
         interrupt();
         handler.removeCallbacksAndMessages(null);
-        rootShell.close();
+        rootInput.close();
     }
 
     private static boolean isClickKey(int key) {

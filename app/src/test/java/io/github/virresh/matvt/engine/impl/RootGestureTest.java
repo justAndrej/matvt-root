@@ -26,12 +26,12 @@ public class RootGestureTest {
     }
 
     @Test
-    public void longPressUsesStationarySwipeAndBoundsDuration() {
-        int[] points = swipeArguments(RootGesture.longPress(120, 145, Integer.MAX_VALUE));
+    public void swipeDurationIsBounded() {
+        int[] points = swipeArguments(RootGesture.swipe(120, 145, 120, 200, Integer.MAX_VALUE));
         assertEquals(120, points[0]);
         assertEquals(145, points[1]);
         assertEquals(points[0], points[2]);
-        assertEquals(points[1], points[3]);
+        assertEquals(200, points[3]);
         assertEquals(2000, points[4]);
     }
 
@@ -43,12 +43,10 @@ public class RootGestureTest {
 
     private static int[] swipeArguments(String command) {
         String[] arguments = command.split(" ");
-        assertEquals("/system/bin/input", arguments[0]);
-        assertEquals("touchscreen", arguments[1]);
-        assertEquals("swipe", arguments[2]);
-        assertEquals(8, arguments.length);
+        assertEquals("SWIPE", arguments[0]);
+        assertEquals(6, arguments.length);
         int[] points = new int[5];
-        for (int index = 0; index < points.length; index++) points[index] = Integer.parseInt(arguments[index + 3]);
+        for (int index = 0; index < points.length; index++) points[index] = Integer.parseInt(arguments[index + 1]);
         return points;
     }
 }

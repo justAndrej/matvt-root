@@ -2,8 +2,8 @@
 
 # MATVT: Mouse for Android TV Toggle
 
-**Sonim XP5900 root build:** this branch injects taps, long presses and swipes through
-a persistent local `su` session. The default activation key is **PTT (289)**.
+**Sonim XP5900 root build:** this branch injects taps, continuous holds and swipes through
+a persistent root touch process. The default activation key is **PTT (289)**.
 See [setup, controls, implementation and verification](docs/sonim-xp5900.md).
 
 Hard to reach portions of some legacy app that you're running on your Android TV?
@@ -42,7 +42,7 @@ Run the following adb commands
   ```
 
 ## How to use?
-- DPAD is for movement and single clicks (I think I added long click support too, but isn't very reliable)
+- D-pad arrows move the cursor. Center/Enter puts a finger down at the cursor and releases it when the key is released, supporting both short taps and continuous long presses.
 - The color buttons are for swiping. RED and GREEN for up/down swipe, YELLOW and BLUE for left/right swipe
 - Info button will instantly toggle mouse visibility (so you can switch between mouse and no mouse instantly)
 - ~~Pressing back button for more than 3 seconds will disable the accessibility service completely~~ This is now removed.

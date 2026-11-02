@@ -1,19 +1,11 @@
 package io.github.virresh.matvt.engine.impl;
 
-/** Only numeric coordinates and bounded durations are passed to the root shell. */
+/** Only numeric coordinates and bounded swipe durations are passed to the root server. */
 final class RootGesture {
     private RootGesture() {}
 
-    static String tap(int x, int y) {
-        return "/system/bin/input touchscreen tap " + Math.max(0, x) + " " + Math.max(0, y);
-    }
-
-    static String longPress(int x, int y, int durationMs) {
-        return swipe(x, y, x, y, durationMs);
-    }
-
     static String swipe(int x1, int y1, int x2, int y2, int durationMs) {
-        return "/system/bin/input touchscreen swipe "
+        return "SWIPE "
                 + Math.max(0, x1) + " " + Math.max(0, y1) + " "
                 + Math.max(0, x2) + " " + Math.max(0, y2) + " "
                 + Math.max(100, Math.min(2000, durationMs));

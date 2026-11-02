@@ -19,3 +19,8 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Entry point launched by app_process, outside the normal Android component lifecycle.
+-keep class io.github.virresh.matvt.engine.root.RootTouchServer {
+    public static void main(java.lang.String[]);
+}
