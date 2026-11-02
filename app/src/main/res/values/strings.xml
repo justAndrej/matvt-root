@@ -9,6 +9,14 @@
     <string name="serv_acc_denied">Accessibility Service : Not Running</string>
     <string name="serv_overlay_allowed">Overlay Service : Running</string>
     <string name="serv_overlay_denied">Overlay Service : Not Running</string>
+    <string name="activation_key_hint">(Default: %1$d — PTT)</string>
+    <string name="invalid_activation_key">Enter a valid numeric key code</string>
+    <string name="root_requesting">Requesting root access for MATVT…</string>
+    <string name="root_busy">Root input is busy. Try again after the current gesture.</string>
+    <string name="root_unavailable">Root input failed. D-pad restored. Allow MATVT in Magisk, then hold the activation key to retry.</string>
+    <string name="mode_mouse">Mouse Mode (root)</string>
+    <string name="mode_scroll">Scroll Mode (root)</string>
+    <string name="mode_dpad">D-Pad Mode</string>
     <string-array name="mouse_style_arr">
         <item>Dark (default)</item>
         <item>Light</item>

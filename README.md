@@ -2,6 +2,10 @@
 
 # MATVT: Mouse for Android TV Toggle
 
+**Sonim XP5900 root build:** this branch injects taps, long presses and swipes through
+a persistent local `su` session. The default activation key is **PTT (289)**.
+See [setup, controls, implementation and verification](docs/sonim-xp5900.md).
+
 Hard to reach portions of some legacy app that you're running on your Android TV?
 Feeling the need to have a touch input in your Android TV?
 Or just looking for an alternative to the famous Mouse Toggle App for your TV?
@@ -46,7 +50,7 @@ Run the following adb commands
 - Toggling mouse visibility via the Info button resets cursor position
 - The mouse warps around your TV sides, so you can roll over from the top of your TV to the bottom instantly
 - Mouse movement is momentum based, so keeping key pressed for longer will increase the movement / send multiple swipes
-- For remotes who don't have the above buttons, a `Boss Key` is available which can be used to toggle between mouse mode / scroll mode / dpad mode. By default this is the mute key, but can be overridden in the configuration settings. See the Youtube video linked below by TechDoctorUK for a demo of how that works.
+- A `Boss Key` toggles between mouse mode / scroll mode / dpad mode. In this fork it defaults to PTT (key code 289), and can be overridden in the configuration settings. Hold it to enable/disable the mouse; briefly press it while enabled to switch mouse/scroll mode.
 
 
 Shoutout to @sweenwolf for enhancing the app to work on tv boxes with less remote buttons.

@@ -162,7 +162,7 @@
 
             <EditText
                 android:inputType="number"
-                android:hint="(Default: 164)"
+                android:hint="@string/activation_key_hint"
                 android:id="@+id/et_override"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

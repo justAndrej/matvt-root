@@ -6,7 +6,6 @@ import android.graphics.drawable.Icon;
 import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.provider.Settings;
-import android.view.KeyEvent;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemSelectedListener;
@@ -28,8 +27,6 @@ import java.util.List;
 
 import io.github.virresh.matvt.R;
 import io.github.virresh.matvt.helper.Helper;
-
-import static io.github.virresh.matvt.engine.impl.MouseEmulationEngine.bossKey;
 
 public class GuiActivity extends AppCompatActivity {
     CountDownTimer repopulate;
@@ -57,6 +54,7 @@ public class GuiActivity extends AppCompatActivity {
         boss_override = findViewById(R.id.boss_override);
         bt_override = findViewById(R.id.bt_override);
         et_override = findViewById(R.id.et_override);
+        et_override.setHint(getString(R.string.activation_key_hint, Helper.DEFAULT_BOSS_KEY));
         cb_override = findViewById(R.id.cb_override);
         sp_mouse_icon = findViewById(R.id.sp_mouse_icon);
         dsbar_mouse_size = findViewById(R.id.dsbar_mouse_size);
@@ -69,16 +67,21 @@ public class GuiActivity extends AppCompatActivity {
         showBossLayout(cb_override.isChecked());
         cb_override.setOnCheckedChangeListener((compoundButton, b) -> {
             showBossLayout(b);
+            Helper.setOverrideStatus(this, b);
         });
 
         bt_override.setOnClickListener(view -> {
             String dat = et_override.getText().toString();
             dat = dat.replaceAll("[^0-9]", "");
-            int keyValue; if (dat.isEmpty()) keyValue = KeyEvent.KEYCODE_VOLUME_MUTE;
-            else keyValue = Integer.parseInt(dat);
+            int keyValue;
+            try {
+                keyValue = dat.isEmpty() ? Helper.DEFAULT_BOSS_KEY : Integer.parseInt(dat);
+            } catch (NumberFormatException exception) {
+                Toast.makeText(this, R.string.invalid_activation_key, Toast.LENGTH_SHORT).show();
+                return;
+            }
             Helper.setOverrideStatus(this, cb_override.isChecked());
             Helper.setOverrideValue(this, keyValue);
-            bossKey = keyValue;
             Toast.makeText(this, "New key is : "+keyValue, Toast.LENGTH_SHORT).show();
         });
 
@@ -121,9 +124,9 @@ public class GuiActivity extends AppCompatActivity {
     private void checkValues(IconStyleSpinnerAdapter adapter) {
         Context ctx = getApplicationContext();
         String val = String.valueOf(Helper.getOverrideValue(ctx));
+        et_override.setText(val);
         if (Helper.isOverriding(ctx)) {
             cb_override.setChecked(true);
-            et_override.setText(val);
         }
         String iconStyle = Helper.getMouseIconPref(ctx);
         sp_mouse_icon.setSelection(adapter.getPosition(iconStyle));

@@ -9,38 +9,58 @@ import io.github.virresh.matvt.engine.impl.MouseEmulationEngine;
 import io.github.virresh.matvt.helper.Helper;
 import io.github.virresh.matvt.view.OverlayView;
 
-import static io.github.virresh.matvt.engine.impl.MouseEmulationEngine.bossKey;
-
 public class MouseEventService extends AccessibilityService {
 
     private MouseEmulationEngine mEngine;
+    private OverlayView mOverlayView;
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent accessibilityEvent) {}
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
-        super.onKeyEvent(event);
         if (Helper.isAnotherServiceInstalled(this) &&
                 event.getKeyCode() == KeyEvent.KEYCODE_HOME) return true;
-        if (Helper.isOverlayDisabled(this)) return false;
+        if (Helper.isOverlayDisabled(this)) {
+            releaseEngine();
+            return false;
+        }
+        if (mEngine == null) init();
         return mEngine.perform(event);
     }
 
     @Override
-    public void onInterrupt() {}
+    public void onInterrupt() {
+        if (mEngine != null) mEngine.interrupt();
+    }
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
-        bossKey = KeyEvent.KEYCODE_VOLUME_MUTE;
-        if (Helper.isOverriding(this)) bossKey = Helper.getOverrideValue(this);
+        releaseEngine();
         if (Settings.canDrawOverlays(this)) init();
     }
 
     private void init() {
-        OverlayView mOverlayView = new OverlayView(this);
+        mOverlayView = new OverlayView(this);
         mEngine = new MouseEmulationEngine(this, mOverlayView);
         mEngine.init(this);
+    }
+
+    private void releaseEngine() {
+        if (mEngine != null) {
+            mEngine.destroy();
+            mEngine = null;
+        }
+        if (mOverlayView != null) {
+            mOverlayView.dispose();
+            mOverlayView = null;
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        releaseEngine();
+        super.onDestroy();
     }
 }

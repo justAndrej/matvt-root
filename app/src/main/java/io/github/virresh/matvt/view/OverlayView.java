@@ -20,8 +20,7 @@ public class OverlayView extends RelativeLayout {
         overlayParams.format = PixelFormat.TRANSPARENT;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            overlayParams.type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY |
-                    WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY;
+            overlayParams.type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY;
             overlayParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
@@ -43,5 +42,10 @@ public class OverlayView extends RelativeLayout {
         v.setLayoutParams(lp);
         this.addView(v);
         Log.i("Overlay View", "W - H : " + this.getWidth() + " " + this.getHeight());
+    }
+
+    public void dispose() {
+        WindowManager wm = (WindowManager) getContext().getSystemService(Context.WINDOW_SERVICE);
+        wm.removeView(this);
     }
 }

@@ -12,6 +12,8 @@ import java.util.List;
 
 public class Helper {
 
+    public static final int DEFAULT_BOSS_KEY = 289;
+
     static final String PREFS_ID = "MATVT";
     static final String PREF_KEY_CB_OVERRIDE_STAT = "CB_OVERRIDE_STAT";
     static final String PREF_KEY_CB_OVERRIDE_VAL = "CB_OVERRIDE_VAL";
@@ -59,7 +61,11 @@ public class Helper {
 
     public static int getOverrideValue(Context ctx) {
         SharedPreferences sp = ctx.getSharedPreferences(PREFS_ID, Context.MODE_PRIVATE);
-        return sp.getInt(PREF_KEY_CB_OVERRIDE_VAL, 164);
+        return sp.getInt(PREF_KEY_CB_OVERRIDE_VAL, DEFAULT_BOSS_KEY);
+    }
+
+    public static int getActivationKey(Context ctx) {
+        return isOverriding(ctx) ? getOverrideValue(ctx) : DEFAULT_BOSS_KEY;
     }
 
     @SuppressLint("ApplySharedPref")

@@ -1,6 +1,7 @@
 package io.github.virresh.matvt.engine.impl;
 
 import android.graphics.PointF;
+import android.graphics.Rect;
 import android.util.Log;
 import android.view.View;
 
@@ -63,30 +64,31 @@ public class PointerControl {
     }
 
     public void move (int direction, int momentum) {
-        int movementX = (int) (dirX[direction] * ((momentum)));
-        int movementY = (int) (dirY[direction] * ((momentum)));
+        int speed = Math.max(1, Math.min(momentum + 1, 20));
+        int movementX = dirX[direction] * speed;
+        int movementY = dirY[direction] * speed;
+        int width = Math.max(1, mPointerLayerView.getWidth());
+        int height = Math.max(1, mPointerLayerView.getHeight());
 
-        mPointerLocation.x += movementX;
-        if (mPointerLocation.x > mPointerLayerView.getWidth()) {
-            mPointerLocation.x -= mPointerLayerView.getWidth();
-        }
-        else if (mPointerLocation.x < 0) {
-            mPointerLocation.x += mPointerLayerView.getWidth();
-        }
-
-        mPointerLocation.y += movementY;
-        if (mPointerLocation.y > mPointerLayerView.getHeight()) {
-            mPointerLocation.y -= mPointerLayerView.getHeight();
-        }
-        else if (mPointerLocation.y < 0) {
-            mPointerLocation.y += mPointerLayerView.getHeight();
-        }
+        mPointerLocation.x = (mPointerLocation.x + movementX + width) % width;
+        mPointerLocation.y = (mPointerLocation.y + movementY + height) % height;
 
         mCursorView.updatePosition(mPointerLocation);
     }
 
     @NonNull
-    PointF getPointerLocation() {
-        return mPointerLocation;
+    PointF getPointerLocationOnScreen() {
+        Rect bounds = getScreenBounds();
+        return new PointF(Math.max(bounds.left, Math.min(bounds.right, bounds.left + mPointerLocation.x)),
+                Math.max(bounds.top, Math.min(bounds.bottom, bounds.top + mPointerLocation.y)));
+    }
+
+    Rect getScreenBounds() {
+        int[] location = new int[2];
+        mPointerLayerView.getLocationOnScreen(location);
+        // right/bottom are inclusive here: input must not receive x == width or y == height.
+        return new Rect(location[0], location[1],
+                location[0] + Math.max(0, mPointerLayerView.getWidth() - 1),
+                location[1] + Math.max(0, mPointerLayerView.getHeight() - 1));
     }
 }
