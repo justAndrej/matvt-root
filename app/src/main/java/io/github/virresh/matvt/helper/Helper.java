@@ -4,7 +4,9 @@ import android.accessibilityservice.AccessibilityServiceInfo;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.provider.Settings;
+import android.util.DisplayMetrics;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityManager;
 
@@ -19,6 +21,53 @@ public class Helper {
     static final String PREF_KEY_CB_OVERRIDE_VAL = "CB_OVERRIDE_VAL";
     static final String PREF_KEY_MOUSE_ICON = "MOUSE_ICON";
     static final String PREF_KEY_MOUSE_SIZE = "MOUSE_SIZE";
+    private static final String PREF_DENSITY_ENABLED = "DENSITY_ENABLED";
+    private static final String PREF_DENSITY_DPI = "DENSITY_DPI";
+    private static final String PREF_DENSITY_KEY = "DENSITY_KEY";
+    private static boolean capturingDensityKey;
+    private static boolean mouseModeEnabled;
+
+    public static boolean isDensityEnabled(Context ctx) {
+        return getPreferences(ctx).getBoolean(PREF_DENSITY_ENABLED, false);
+    }
+
+    public static int getCompactDpi(Context ctx) {
+        return getPreferences(ctx).getInt(PREF_DENSITY_DPI, DensitySettings.DEFAULT_DPI);
+    }
+
+    public static int defaultDensityKey() {
+        return DensitySettings.DEFAULT_KEY;
+    }
+
+    public static int getDensityKey(Context ctx) {
+        int key = getPreferences(ctx).getInt(PREF_DENSITY_KEY, 0);
+        return key > 0 ? key : defaultDensityKey();
+    }
+
+    public static int factoryDpiHint() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+                ? DisplayMetrics.DENSITY_DEVICE_STABLE : DisplayMetrics.DENSITY_DEFAULT;
+    }
+
+    public static void setDensityEnabled(Context ctx, boolean enabled) {
+        getPreferences(ctx).edit().putBoolean(PREF_DENSITY_ENABLED, enabled).apply();
+    }
+
+    public static void saveDensitySettings(Context ctx, boolean enabled, int dpi, int key) {
+        getPreferences(ctx).edit().putBoolean(PREF_DENSITY_ENABLED, enabled)
+                .putInt(PREF_DENSITY_DPI, dpi).putInt(PREF_DENSITY_KEY, key).apply();
+    }
+
+    public static boolean isDensityPreference(String key) {
+        return key == null || PREF_DENSITY_ENABLED.equals(key) || PREF_DENSITY_DPI.equals(key)
+                || PREF_DENSITY_KEY.equals(key) || PREF_KEY_CB_OVERRIDE_STAT.equals(key)
+                || PREF_KEY_CB_OVERRIDE_VAL.equals(key);
+    }
+
+    public static void setCapturingDensityKey(boolean capturing) { capturingDensityKey = capturing; }
+    public static boolean isCapturingDensityKey() { return capturingDensityKey; }
+    public static void setMouseModeEnabled(boolean enabled) { mouseModeEnabled = enabled; }
+    public static boolean isMouseModeEnabled() { return mouseModeEnabled; }
 
     public static SharedPreferences getPreferences(Context ctx) {
         return ctx.getSharedPreferences(PREFS_ID, Context.MODE_PRIVATE);

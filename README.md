@@ -5,6 +5,8 @@
 **Sonim XP5900 root build:** this branch injects taps, continuous holds and swipes through
 a persistent root touch process. The default activation key is **PTT (289)**.
 See [setup, controls, implementation and verification](docs/sonim-xp5900.md).
+An optional Speaker-key hold switches compact/factory screen density; the DPI and
+key are configurable, with automatic factory-scale restoration when mouse mode ends.
 
 Hard to reach portions of some legacy app that you're running on your Android TV?
 Feeling the need to have a touch input in your Android TV?

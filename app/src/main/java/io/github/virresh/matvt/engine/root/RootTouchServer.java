@@ -25,12 +25,14 @@ public final class RootTouchServer {
         PrintWriter output = new PrintWriter(System.out, true);
         ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor();
         TouchSession touch = null;
+        DensityClient density = new DensityClient(args.length == 1 ? args[0] : null);
         int exitCode = 0;
         long request = 0;
         try {
             int uid = Process.myUid();
             // UID 2000 permits isolated adb/emulator verification. The app client requires UID 0.
             if (uid != 0 && uid != 2000) throw new IOException("Root or Android shell UID required");
+            density.recover();
             if (Looper.getMainLooper() == null) Looper.prepareMainLooper();
             touch = new TouchSession(SystemClock::uptimeMillis, new AndroidInjector());
             TouchSession session = touch;
@@ -54,6 +56,7 @@ public final class RootTouchServer {
                     if (parts.length < 2) throw new IOException("Missing command");
                     request = Long.parseLong(parts[0]);
                     if (request <= 0) throw new IOException("Invalid request ID");
+                    String payload = "";
                     switch (parts[1]) {
                         case "DOWN":
                             requireLength(parts, 4);
@@ -70,6 +73,7 @@ public final class RootTouchServer {
                         case "PING":
                             requireLength(parts, 2);
                             touch.heartbeat();
+                            density.heartbeat();
                             break;
                         case "SWIPE":
                             requireLength(parts, 7);
@@ -78,12 +82,28 @@ public final class RootTouchServer {
                         case "QUIT":
                             requireLength(parts, 2);
                             touch.cancel();
+                            density.close();
                             output.println("MATVT_OK " + request);
                             return;
+                        case "DENSITY_TOGGLE":
+                            requireLength(parts, 3);
+                            touch.cancel();
+                            payload = density.toggle(Integer.parseInt(parts[2]));
+                            break;
+                        case "DENSITY_ARM":
+                            requireLength(parts, 2);
+                            touch.cancel();
+                            payload = density.arm();
+                            break;
+                        case "DENSITY_RESET":
+                            requireLength(parts, 2);
+                            touch.cancel();
+                            density.close();
+                            break;
                         default:
                             throw new IOException("Unknown command");
                     }
-                    output.println("MATVT_OK " + request);
+                    output.println("MATVT_OK " + request + (payload.isEmpty() ? "" : " " + payload));
                 }
             }
         } catch (Exception exception) {
@@ -99,6 +119,11 @@ public final class RootTouchServer {
                     output.println("MATVT_ERROR 0 Cleanup: " + diagnostic(exception));
                     exitCode = 1;
                 }
+            }
+            try { density.close(); }
+            catch (IOException exception) {
+                output.println("MATVT_ERROR 0 Density cleanup: " + diagnostic(exception));
+                exitCode = 1;
             }
             System.exit(exitCode);
         }

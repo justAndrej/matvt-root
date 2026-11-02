@@ -2,8 +2,10 @@ package io.github.virresh.matvt.engine.impl;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.PointF;
 import android.graphics.Rect;
+import android.media.AudioManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -15,6 +17,7 @@ import java.util.Set;
 
 import io.github.virresh.matvt.R;
 import io.github.virresh.matvt.helper.Helper;
+import io.github.virresh.matvt.helper.DensitySettings;
 import io.github.virresh.matvt.view.MouseCursorView;
 import io.github.virresh.matvt.view.OverlayView;
 
@@ -29,6 +32,11 @@ public class MouseEmulationEngine {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Set<Integer> consumedKeys = new HashSet<>();
     private final Runnable hideCursor;
+    private final Runnable sessionHeartbeat;
+    private final AudioManager audioManager;
+    private final SharedPreferences preferences;
+    private final SharedPreferences.OnSharedPreferenceChangeListener preferenceListener;
+    private final Runnable densitySettingsChanged;
     private AccessibilityService service;
     private boolean enabled;
     private boolean enabling;
@@ -44,10 +52,51 @@ public class MouseEmulationEngine {
     private Runnable bossHold;
     private int clickKey = NO_KEY;
     private boolean touchAccepted;
-    private Runnable touchHeartbeat;
+    private int heldDensityKey = NO_KEY;
+    private boolean densityLongTriggered;
+    private boolean densityCompact;
+    private boolean densityManaged;
+    private boolean densityArmPending;
+    private int densityGeneration;
+    private Runnable densityHold;
 
     public MouseEmulationEngine(Context context, OverlayView overlay) {
-        rootInput = new RootInput(context.getApplicationInfo().sourceDir);
+        rootInput = new RootInput(context.getApplicationInfo().sourceDir, DensityRecovery.markerPath(context));
+        audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        preferences = Helper.getPreferences(context);
+        densitySettingsChanged = () -> {
+            densityGeneration++;
+            if (enabling) {
+                interrupt();
+                return;
+            }
+            cancelDensityHold();
+            stopMotion();
+            cancelClick();
+            restoreDensity();
+        };
+        preferenceListener = (prefs, key) -> {
+            if (Helper.isDensityPreference(key)) {
+                handler.removeCallbacks(densitySettingsChanged);
+                handler.post(densitySettingsChanged);
+            }
+        };
+        sessionHeartbeat = new Runnable() {
+            @Override public void run() {
+                if (destroyed || !enabled) return;
+                if (densityConfigured() && !densityManaged && !densityArmPending) armDensity(false);
+                rootInput.heartbeat(result -> handler.post(() -> {
+                    if (!result.isSuccess()) reportTouch("heartbeat", result);
+                }));
+                if (!densityKeyAvailable() && densityManaged) {
+                    cancelDensityHold();
+                    stopMotion();
+                    cancelClick();
+                    restoreDensity();
+                }
+                handler.postDelayed(this, 1000);
+            }
+        };
         MouseCursorView cursor = new MouseCursorView(context);
         overlay.addFullScreenLayer(cursor);
         pointer = new PointerControl(overlay, cursor);
@@ -57,6 +106,7 @@ public class MouseEmulationEngine {
 
     public void init(AccessibilityService service) {
         this.service = service;
+        preferences.registerOnSharedPreferenceChangeListener(preferenceListener);
     }
 
     public boolean perform(KeyEvent event) {
@@ -83,11 +133,19 @@ public class MouseEmulationEngine {
         }
         if (!enabled) return false;
 
+        if (key == heldDensityKey || (key == Helper.getDensityKey(service) && densityKeyAvailable())) {
+            handleDensityKey(event);
+            return true;
+        }
+
         if (event.getAction() == KeyEvent.ACTION_DOWN && (key == KeyEvent.KEYCODE_BACK
                 || key == KeyEvent.KEYCODE_HOME || key == KeyEvent.KEYCODE_APP_SWITCH
                 || key == KeyEvent.KEYCODE_POWER)) {
+            cancelDensityHold();
             cancelClick();
         }
+
+        if (heldDensityKey != NO_KEY && (isClickKey(key) || directionForKey(key) != NO_KEY)) return true;
 
         if (isClickKey(key)) {
             handleClick(event);
@@ -123,6 +181,7 @@ public class MouseEmulationEngine {
                     toggleMouse();
                 } else if (enabled) {
                     stopMotion();
+                    cancelDensityHold();
                     cancelClick();
                     scrollMode = !scrollMode;
                     pointer.reset();
@@ -145,22 +204,55 @@ public class MouseEmulationEngine {
         showMessage(R.string.root_requesting);
         boolean accepted = rootInput.prepare(result -> handler.post(() -> {
             if (destroyed || generation != modeGeneration) return;
-            enabling = false;
             if (!result.isSuccess()) {
                 rootFailed(result);
                 return;
             }
-            enabled = true;
-            scrollMode = false;
-            pointer.reset();
-            pointer.reappear();
-            scheduleHide();
             Log.i(LOG_TAG, "Root ready in " + result.elapsedMs + " ms");
-            showMessage(R.string.mode_mouse);
+            if (densityConfigured()) armDensity(true);
+            else finishMouseActivation();
         }));
         if (!accepted) {
             enabling = false;
             showMessage(R.string.root_busy);
+        }
+    }
+
+    private void finishMouseActivation() {
+        enabling = false;
+        enabled = true;
+        Helper.setMouseModeEnabled(true);
+        scrollMode = false;
+        pointer.reset();
+        pointer.reappear();
+        scheduleHide();
+        handler.removeCallbacks(sessionHeartbeat);
+        handler.post(sessionHeartbeat);
+        showMessage(R.string.mode_mouse);
+    }
+
+    private void armDensity(boolean activateMouse) {
+        int generation = densityGeneration;
+        int mode = modeGeneration;
+        densityArmPending = true;
+        boolean accepted = rootInput.armDensity(result -> handler.post(() -> {
+            if (destroyed || mode != modeGeneration || generation != densityGeneration) return;
+            densityArmPending = false;
+            if (!result.isSuccess()) {
+                rootFailed(result);
+                return;
+            }
+            densityManaged = true;
+            densityCompact = result.output.startsWith("DENSITY COMPACT ");
+            if (!densityConfigured()) restoreDensity();
+            if (activateMouse) finishMouseActivation();
+        }));
+        if (!accepted) {
+            densityArmPending = false;
+            if (activateMouse) {
+                enabling = false;
+                showMessage(R.string.root_busy);
+            }
         }
     }
 
@@ -174,23 +266,10 @@ public class MouseEmulationEngine {
             PointF point = pointer.getPointerLocationOnScreen();
             touchAccepted = rootInput.down(Math.round(point.x), Math.round(point.y),
                     result -> handler.post(() -> reportTouch("down", result)));
-            if (touchAccepted) {
-                touchHeartbeat = new Runnable() {
-                    @Override
-                    public void run() {
-                        if (destroyed || !enabled || clickKey == NO_KEY || !touchAccepted) return;
-                        rootInput.heartbeat(result -> handler.post(() -> {
-                            if (!result.isSuccess()) reportTouch("heartbeat", result);
-                        }));
-                        handler.postDelayed(this, 1000);
-                    }
-                };
-                handler.postDelayed(touchHeartbeat, 1000);
-            } else {
+            if (!touchAccepted) {
                 showMessage(R.string.root_busy);
             }
         } else if (event.getAction() == KeyEvent.ACTION_UP && event.getKeyCode() == clickKey) {
-            if (touchHeartbeat != null) handler.removeCallbacks(touchHeartbeat);
             if (touchAccepted) {
                 // This is accepted even if the server has not acknowledged DOWN yet.
                 boolean cancelled = event.isCanceled();
@@ -201,6 +280,76 @@ public class MouseEmulationEngine {
             clickKey = NO_KEY;
             scheduleHide();
         }
+    }
+
+    private boolean densityKeyAvailable() {
+        return enabled && densityConfigured();
+    }
+
+    private boolean densityConfigured() {
+        return DensitySettings.isAvailable(true, Helper.isDensityEnabled(service), Helper.getDensityKey(service),
+                Helper.getActivationKey(service), audioManager == null ? -1 : audioManager.getMode());
+    }
+
+    private void handleDensityKey(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (heldDensityKey != NO_KEY || event.getRepeatCount() != 0) return;
+            heldDensityKey = event.getKeyCode();
+            densityLongTriggered = false;
+            stopMotion();
+            cancelClick();
+            handler.removeCallbacks(hideCursor);
+            densityHold = this::toggleDensity;
+            handler.postDelayed(densityHold, DensitySettings.HOLD_MS);
+        } else if (event.getAction() == KeyEvent.ACTION_UP && heldDensityKey == event.getKeyCode()) {
+            if (!event.isCanceled() && !densityLongTriggered
+                    && event.getEventTime() - event.getDownTime() >= DensitySettings.HOLD_MS) toggleDensity();
+            cancelDensityHold();
+            scheduleHide();
+        }
+    }
+
+    private void toggleDensity() {
+        densityLongTriggered = true;
+        if (destroyed || !enabled || !densityKeyAvailable()) return;
+        if (!densityManaged || densityArmPending) {
+            showMessage(R.string.root_busy);
+            return;
+        }
+        int generation = densityGeneration;
+        int mode = modeGeneration;
+        int dpi = Helper.getCompactDpi(service);
+        boolean accepted = rootInput.toggleDensity(dpi, result -> handler.post(() -> {
+            if (destroyed || mode != modeGeneration || generation != densityGeneration) return;
+            if (!result.isSuccess()) {
+                rootFailed(result);
+                return;
+            }
+            if (!densityKeyAvailable()) {
+                restoreDensity();
+                return;
+            }
+            densityCompact = result.output.startsWith("DENSITY COMPACT ");
+            Log.i(LOG_TAG, result.output);
+            Toast.makeText(service, densityCompact ? service.getString(R.string.density_compact, dpi)
+                    : service.getString(R.string.density_original), Toast.LENGTH_SHORT).show();
+            pointer.reappear();
+        }));
+        if (!accepted) showMessage(R.string.root_busy);
+    }
+
+    private void cancelDensityHold() {
+        if (densityHold != null) handler.removeCallbacks(densityHold);
+        heldDensityKey = NO_KEY;
+    }
+
+    private void restoreDensity() {
+        densityCompact = false;
+        densityManaged = false;
+        densityArmPending = false;
+        rootInput.resetDensity(result -> handler.post(() -> {
+            if (!result.isSuccess()) reportTouch("density reset", result);
+        }));
     }
 
     private void reportTouch(String name, RootInput.Result result) {
@@ -270,7 +419,6 @@ public class MouseEmulationEngine {
     }
 
     private void cancelClick() {
-        if (touchHeartbeat != null) handler.removeCallbacks(touchHeartbeat);
         // Also promote an already queued UP to CANCEL when leaving mouse mode.
         rootInput.finishTouch(true, result -> handler.post(() -> reportTouch("cancel", result)));
         touchAccepted = false;
@@ -280,10 +428,14 @@ public class MouseEmulationEngine {
     private void disableMouse() {
         modeGeneration++;
         enabled = false;
+        Helper.setMouseModeEnabled(false);
         enabling = false;
         scrollMode = false;
         stopMotion();
+        cancelDensityHold();
         cancelClick();
+        restoreDensity();
+        handler.removeCallbacks(sessionHeartbeat);
         handler.removeCallbacks(hideCursor);
         pointer.disappear();
     }
@@ -305,6 +457,7 @@ public class MouseEmulationEngine {
 
     public void destroy() {
         destroyed = true;
+        preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener);
         interrupt();
         handler.removeCallbacksAndMessages(null);
         rootInput.close();

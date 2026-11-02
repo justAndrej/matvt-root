@@ -235,6 +235,64 @@ public class RootInputTest {
         return input;
     }
 
+    @Test public void idleHeartbeatKeepsDensityGuardAliveWithoutATouch() throws Exception {
+        FakeProcess process = new FakeProcess();
+        try (RootInput input = connected(process)) {
+            Completion ping = new Completion();
+            input.heartbeat(ping);
+            assertTrue(ping.result().isSuccess());
+            assertEquals(2, process.commands.size());
+        }
+    }
+
+    @Test public void densityResponsesReachTheCallerWithoutLosingModeOrValue() throws Exception {
+        FakeProcess process = new FakeProcess();
+        try (RootInput input = connected(process)) {
+            Completion armed = new Completion();
+            assertTrue(input.armDensity(armed));
+            assertEquals("DENSITY ORIGINAL 160", armed.result().output);
+            Completion toggled = new Completion();
+            assertTrue(input.toggleDensity(100, toggled));
+            assertEquals("DENSITY COMPACT 100", toggled.result().output);
+        }
+    }
+
+    @Test public void resetCannotBeDroppedWhileDensityChangeIsInFlight() throws Exception {
+        FakeProcess process = new FakeProcess();
+        try (RootInput input = connected(process)) {
+            process.blockPrefix = "DENSITY_TOGGLE";
+            assertTrue(input.toggleDensity(100, result -> { }));
+            await(process.blocked);
+            Completion reset = new Completion();
+            input.resetDensity(reset);
+            assertFalse(input.down(10, 20, result -> fail("Touch during scale transition")));
+            process.unblock();
+            assertTrue(reset.result().isSuccess());
+            assertEquals("DENSITY_TOGGLE 100", process.commands.get(1));
+            assertEquals("DENSITY_RESET", process.commands.get(2));
+        }
+    }
+
+    @Test public void queuedToggleIsSkippedAfterMouseWasDisabled() throws Exception {
+        FakeProcess process = new FakeProcess();
+        CountDownLatch prepared = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        try (RootInput input = new RootInput(() -> process, 1000, 1000)) {
+            input.prepare(result -> {
+                prepared.countDown();
+                try { resume.await(); } catch (InterruptedException ignored) { }
+            });
+            await(prepared);
+            input.toggleDensity(100, result -> { });
+            Completion reset = new Completion();
+            input.resetDensity(reset);
+            resume.countDown();
+            assertTrue(reset.result().isSuccess());
+            assertEquals(2, process.commands.size());
+            assertEquals("DENSITY_RESET", process.commands.get(1));
+        } finally { resume.countDown(); }
+    }
+
     private static void prepare(RootInput input) throws Exception {
         Completion ready = new Completion();
         assertTrue(input.prepare(ready));
@@ -274,7 +332,9 @@ public class RootInputTest {
                     blocked.countDown();
                     return;
                 }
-                respond("MATVT_OK " + parts[0]);
+                String payload = command.equals("DENSITY_ARM") ? " DENSITY ORIGINAL 160"
+                        : command.startsWith("DENSITY_TOGGLE ") ? " DENSITY COMPACT " + command.substring(15) : "";
+                respond("MATVT_OK " + parts[0] + payload);
                 if (command.equals("QUIT")) exit();
             }
             @Override public void close() throws IOException { exit(); }

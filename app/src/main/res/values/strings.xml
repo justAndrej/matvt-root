@@ -22,6 +22,20 @@
     <string name="cursor_style_label">Style</string>
     <string name="cursor_style_dark">Dark</string>
     <string name="cursor_style_light">Light</string>
+    <string name="density_enabled">Enable density hotkey</string>
+    <string name="density_help">Hold the key for 0.8 s in mouse mode to switch compact/factory scale. Calls and VoIP keep the native speaker key. On Sonim, disable Accessibility → Voice Command.</string>
+    <string name="density_range">Compact DPI: %1$d–%2$d</string>
+    <string name="density_dpi_hint">Default: 100</string>
+    <string name="density_key_label">Density key code (Speaker)</string>
+    <string name="density_key_hint">Default: 290 (Speaker)</string>
+    <string name="density_detect">Detect key</string>
+    <string name="density_save">Save density settings</string>
+    <string name="density_saved">Density settings saved</string>
+    <string name="density_press_key">Press the desired key once in D-pad mode. Back cancels.</string>
+    <string name="density_stop_mouse">Turn mouse mode off with PTT before detecting a key</string>
+    <string name="density_key_conflict">Choose a key other than mouse activation, D-pad, navigation, volume or call controls</string>
+    <string name="density_compact">Compact scale: %1$d dpi</string>
+    <string name="density_original">Factory scale restored</string>
     <string-array name="mouse_style_arr">
         <item>Dark (default)</item>
         <item>Light</item>

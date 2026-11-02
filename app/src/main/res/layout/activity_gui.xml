@@ -207,10 +207,92 @@
                 android:buttonTint="@color/white"
                 android:nextFocusUp="@id/et_override"
                 android:nextFocusLeft="@id/et_override"
+                android:nextFocusDown="@id/density_enabled"
                 android:text="SAVE"
                 android:textColor="@color/white"
                 android:textSize="20sp" />
 
         </LinearLayout>
+
+        <CheckBox
+            android:id="@+id/density_enabled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:buttonTint="@color/white"
+            android:nextFocusUp="@id/bt_override"
+            android:nextFocusDown="@id/density_dpi"
+            android:text="@string/density_enabled"
+            android:textColor="@color/white"
+            android:textSize="18sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/density_help"
+            android:textColor="@color/white"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/density_range"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:labelFor="@id/density_dpi"
+            android:textColor="@color/white"
+            android:textSize="16sp" />
+
+        <EditText
+            android:id="@+id/density_dpi"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/density_dpi_hint"
+            android:inputType="number"
+            android:singleLine="true"
+            android:importantForAutofill="no"
+            android:nextFocusUp="@id/density_enabled"
+            android:nextFocusDown="@id/density_key"
+            android:textColor="@color/white"
+            android:textColorHint="@color/white_2" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:labelFor="@id/density_key"
+            android:text="@string/density_key_label"
+            android:textColor="@color/white"
+            android:textSize="16sp" />
+
+        <EditText
+            android:id="@+id/density_key"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/density_key_hint"
+            android:inputType="number"
+            android:singleLine="true"
+            android:importantForAutofill="no"
+            android:nextFocusUp="@id/density_dpi"
+            android:nextFocusDown="@id/density_detect"
+            android:textColor="@color/white"
+            android:textColorHint="@color/white_2" />
+
+        <Button
+            android:id="@+id/density_detect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/button_background"
+            android:nextFocusUp="@id/density_key"
+            android:nextFocusDown="@id/density_save"
+            android:text="@string/density_detect"
+            android:textColor="@color/white" />
+
+        <Button
+            android:id="@+id/density_save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/button_background"
+            android:nextFocusUp="@id/density_detect"
+            android:text="@string/density_save"
+            android:textColor="@color/white" />
     </LinearLayout>
 </ScrollView>

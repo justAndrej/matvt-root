@@ -13,6 +13,7 @@ import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
 
 import io.github.virresh.matvt.engine.impl.MouseEmulationEngine;
+import io.github.virresh.matvt.engine.impl.DensityRecovery;
 import io.github.virresh.matvt.helper.Helper;
 import io.github.virresh.matvt.view.OverlayView;
 
@@ -69,6 +70,10 @@ public class MouseEventService extends AccessibilityService {
                 event.getDownTime(), event.getAction(), event.getRepeatCount())) {
             return false;
         }
+        if (Helper.isCapturingDensityKey()) {
+            if (mEngine != null) mEngine.interrupt();
+            return false;
+        }
         if (Helper.isAnotherServiceInstalled(this) &&
                 event.getKeyCode() == KeyEvent.KEYCODE_HOME) return true;
         if (Helper.isOverlayDisabled(this)) {
@@ -89,6 +94,7 @@ public class MouseEventService extends AccessibilityService {
         super.onServiceConnected();
         mInputGate.suspend();
         releaseEngine();
+        DensityRecovery.recoverIfNeeded(this, () -> { });
         if (!isInputBlocked() && Settings.canDrawOverlays(this)) {
             init();
         }

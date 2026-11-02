@@ -58,12 +58,15 @@ final class RootInput implements Closeable {
     private boolean ready;
     private boolean preparing;
     private boolean heartbeatQueued;
+    private boolean controlBusy;
+    private boolean densityResetQueued;
+    private int densityGeneration;
     private Gesture gesture;
     // Accessed only by the worker, including disposal.
     private Session session;
 
-    RootInput(String apkPath) {
-        this(() -> new ProcessBuilder("su", "-c", serverCommand(apkPath))
+    RootInput(String apkPath, String densityMarkerPath) {
+        this(() -> new ProcessBuilder("su", "-c", serverCommand(apkPath, densityMarkerPath))
                 .redirectErrorStream(true).start(), 30000, 5000);
     }
 
@@ -73,14 +76,15 @@ final class RootInput implements Closeable {
         this.commandTimeoutMs = commandTimeoutMs;
     }
 
-    static String serverCommand(String apkPath) {
+    static String serverCommand(String apkPath, String densityMarkerPath) {
         String quoted = "'" + apkPath.replace("'", "'\"'\"'") + "'";
         return "export CLASSPATH=" + quoted + "; exec /system/bin/app_process / "
-                + "--nice-name=matvt-root-touch io.github.virresh.matvt.engine.root.RootTouchServer";
+                + "--nice-name=matvt-root-touch io.github.virresh.matvt.engine.root.RootTouchServer "
+                + "'" + densityMarkerPath.replace("'", "'\"'\"'") + "'";
     }
 
     synchronized boolean prepare(Callback callback) {
-        if (closed || preparing || gesture != null) return false;
+        if (closed || preparing || gesture != null || controlBusy || densityResetQueued) return false;
         preparing = true;
         worker.execute(() -> {
             long start = System.nanoTime();
@@ -106,7 +110,7 @@ final class RootInput implements Closeable {
     }
 
     synchronized boolean down(int x, int y, Callback callback) {
-        if (closed || !ready || preparing || gesture != null) return false;
+        if (closed || !ready || preparing || gesture != null || controlBusy || densityResetQueued) return false;
         Gesture current = new Gesture(true);
         gesture = current;
         worker.execute(() -> {
@@ -155,12 +159,15 @@ final class RootInput implements Closeable {
     }
 
     synchronized void heartbeat(Callback callback) {
-        Gesture current = gesture;
-        if (closed || !ready || heartbeatQueued || current == null || !current.touch || current.finishQueued) return;
+        if (closed || !ready || heartbeatQueued || preparing || controlBusy || densityResetQueued
+                || (gesture != null && gesture.touch && gesture.finishQueued)) return;
         heartbeatQueued = true;
         worker.execute(() -> {
             boolean send;
-            synchronized (this) { send = !closed && gesture == current && !current.finishQueued; }
+            synchronized (this) {
+                send = !closed && ready && !controlBusy && !densityResetQueued
+                        && (gesture == null || !gesture.touch || !gesture.finishQueued);
+            }
             Result result = send ? command("PING") : success(System.nanoTime());
             synchronized (this) { heartbeatQueued = false; }
             if (send) notify(callback, result);
@@ -168,7 +175,7 @@ final class RootInput implements Closeable {
     }
 
     synchronized boolean swipe(String command, Callback callback) {
-        if (closed || !ready || preparing || gesture != null) return false;
+        if (closed || !ready || preparing || gesture != null || controlBusy || densityResetQueued) return false;
         Gesture current = new Gesture(false);
         gesture = current;
         worker.execute(() -> {
@@ -185,11 +192,43 @@ final class RootInput implements Closeable {
         long start = System.nanoTime();
         try {
             if (session == null) throw new IOException("Root server is not connected");
-            session.command(text);
-            return success(start);
+            return new Result(0, session.command(text), elapsed(start));
         } catch (IOException | InterruptedException exception) {
             return failed(exception, start);
         }
+    }
+
+    synchronized boolean toggleDensity(int dpi, Callback callback) {
+        return densityControl("DENSITY_TOGGLE " + dpi, callback);
+    }
+
+    synchronized boolean armDensity(Callback callback) {
+        return densityControl("DENSITY_ARM", callback);
+    }
+
+    private boolean densityControl(String command, Callback callback) {
+        if (closed || !ready || preparing || gesture != null || controlBusy || densityResetQueued) return false;
+        controlBusy = true;
+        int generation = densityGeneration;
+        worker.execute(() -> {
+            boolean send;
+            synchronized (this) { send = !closed && generation == densityGeneration; }
+            Result result = send ? command(command) : success(System.nanoTime());
+            synchronized (this) { controlBusy = false; }
+            notify(callback, result);
+        });
+        return true;
+    }
+
+    synchronized void resetDensity(Callback callback) {
+        if (closed || !ready || preparing || densityResetQueued) return;
+        densityGeneration++;
+        densityResetQueued = true;
+        worker.execute(() -> {
+            Result result = session == null ? success(System.nanoTime()) : command("DENSITY_RESET");
+            synchronized (this) { densityResetQueued = false; }
+            notify(callback, result);
+        });
     }
 
     private Result failed(Exception exception, long start) {
@@ -279,14 +318,17 @@ final class RootInput implements Closeable {
             }
         }
 
-        void command(String command) throws IOException, InterruptedException {
+        String command(String command) throws IOException, InterruptedException {
             long id = ++sequence;
             input.write((id + " " + command + "\n").getBytes(StandardCharsets.UTF_8));
             input.flush();
-            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(commandTimeoutMs);
+            long timeout = command.startsWith("DENSITY_") ? commandTimeoutMs * 2 : commandTimeoutMs;
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeout);
+            String prefix = "MATVT_OK " + id;
             while (true) {
                 String line = nextLine(deadline, false);
-                if (("MATVT_OK " + id).equals(line)) return;
+                if (prefix.equals(line)) return "";
+                if (line.startsWith(prefix + " ")) return line.substring(prefix.length() + 1);
             }
         }
 

@@ -6,6 +6,7 @@ import android.graphics.drawable.Icon;
 import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.provider.Settings;
+import android.view.KeyEvent;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemSelectedListener;
@@ -28,6 +29,7 @@ import java.util.List;
 
 import io.github.virresh.matvt.R;
 import io.github.virresh.matvt.helper.CursorAppearance;
+import io.github.virresh.matvt.helper.DensitySettings;
 import io.github.virresh.matvt.helper.Helper;
 import io.github.virresh.matvt.view.CursorDrawable;
 
@@ -44,6 +46,11 @@ public class GuiActivity extends AppCompatActivity {
     SeekBar dsbar_mouse_size;
     TextView cursor_size_label;
     ImageView cursor_preview;
+    CheckBox density_enabled;
+    EditText density_dpi, density_key;
+    private boolean updatingDensityControls;
+    private boolean updatingBossControls;
+    private int capturedDensityKey = -1;
 
     public static int ACTION_MANAGE_OVERLAY_PERMISSION_REQUEST_CODE = 701;
     public static int ACTION_ACCESSIBILITY_PERMISSION_REQUEST_CODE = 702;
@@ -76,6 +83,15 @@ public class GuiActivity extends AppCompatActivity {
         updateCursorPreview();
         showBossLayout(cb_override.isChecked());
         cb_override.setOnCheckedChangeListener((compoundButton, b) -> {
+            if (updatingBossControls) return;
+            int proposedKey = b ? Helper.getOverrideValue(this) : Helper.DEFAULT_BOSS_KEY;
+            if (Helper.isDensityEnabled(this) && proposedKey == Helper.getDensityKey(this)) {
+                Toast.makeText(this, R.string.density_key_conflict, Toast.LENGTH_LONG).show();
+                updatingBossControls = true;
+                cb_override.setChecked(Helper.isOverriding(this));
+                updatingBossControls = false;
+                return;
+            }
             showBossLayout(b);
             Helper.setOverrideStatus(this, b);
         });
@@ -88,6 +104,11 @@ public class GuiActivity extends AppCompatActivity {
                 keyValue = dat.isEmpty() ? Helper.DEFAULT_BOSS_KEY : Integer.parseInt(dat);
             } catch (NumberFormatException exception) {
                 Toast.makeText(this, R.string.invalid_activation_key, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (cb_override.isChecked() && Helper.isDensityEnabled(this)
+                    && keyValue == Helper.getDensityKey(this)) {
+                Toast.makeText(this, R.string.density_key_conflict, Toast.LENGTH_LONG).show();
                 return;
             }
             Helper.setOverrideStatus(this, cb_override.isChecked());
@@ -123,8 +144,86 @@ public class GuiActivity extends AppCompatActivity {
             public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
+        setupDensityControls();
         populateText();
         findViewById(R.id.gui_setup_perm).setOnClickListener(view -> askPermissions());
+    }
+
+    private void setupDensityControls() {
+        density_enabled = findViewById(R.id.density_enabled);
+        density_dpi = findViewById(R.id.density_dpi);
+        density_key = findViewById(R.id.density_key);
+        density_enabled.setChecked(Helper.isDensityEnabled(this));
+        density_dpi.setText(String.valueOf(Helper.getCompactDpi(this)));
+        int key = Helper.getDensityKey(this);
+        if (key > 0) density_key.setText(String.valueOf(key));
+        TextView range = findViewById(R.id.density_range);
+        range.setText(getString(R.string.density_range, DensitySettings.MIN_DPI, Helper.factoryDpiHint() - 1));
+        density_enabled.setOnCheckedChangeListener((button, checked) -> {
+            if (updatingDensityControls) return;
+            if (!checked) {
+                Helper.setDensityEnabled(this, false);
+            } else if (!saveDensitySettings()) {
+                updatingDensityControls = true;
+                density_enabled.setChecked(false);
+                updatingDensityControls = false;
+            }
+        });
+        findViewById(R.id.density_save).setOnClickListener(view -> {
+            if (saveDensitySettings()) Toast.makeText(this, R.string.density_saved, Toast.LENGTH_SHORT).show();
+        });
+        findViewById(R.id.density_detect).setOnClickListener(view -> {
+            if (Helper.isMouseModeEnabled()) {
+                Toast.makeText(this, R.string.density_stop_mouse, Toast.LENGTH_LONG).show();
+                return;
+            }
+            capturedDensityKey = -1;
+            Helper.setCapturingDensityKey(true);
+            Toast.makeText(this, R.string.density_press_key, Toast.LENGTH_LONG).show();
+        });
+    }
+
+    private boolean saveDensitySettings() {
+        try {
+            String dpiText = density_dpi.getText().toString().trim();
+            String keyText = density_key.getText().toString().trim();
+            int dpi = dpiText.isEmpty() ? DensitySettings.DEFAULT_DPI : Integer.parseInt(dpiText);
+            int key = keyText.isEmpty() ? Helper.defaultDensityKey() : Integer.parseInt(keyText);
+            if (!DensitySettings.isValidDpi(dpi, Helper.factoryDpiHint())) {
+                density_dpi.setError(getString(R.string.density_range, DensitySettings.MIN_DPI,
+                        Helper.factoryDpiHint() - 1));
+                return false;
+            }
+            if ((density_enabled.isChecked() || key != 0)
+                    && !DensitySettings.isKeyAllowed(key, Helper.getActivationKey(this))) {
+                density_key.setError(getString(R.string.density_key_conflict));
+                return false;
+            }
+            density_dpi.setError(null);
+            density_key.setError(null);
+            Helper.saveDensitySettings(this, density_enabled.isChecked(), dpi, key);
+            return true;
+        } catch (NumberFormatException exception) {
+            Toast.makeText(this, R.string.invalid_activation_key, Toast.LENGTH_LONG).show();
+            return false;
+        }
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (Helper.isCapturingDensityKey()) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                capturedDensityKey = event.getKeyCode();
+                if (capturedDensityKey != KeyEvent.KEYCODE_BACK) {
+                    density_key.setText(String.valueOf(capturedDensityKey));
+                }
+            } else if (event.getAction() == KeyEvent.ACTION_UP && event.getKeyCode() == capturedDensityKey) {
+                Helper.setCapturingDensityKey(false);
+                capturedDensityKey = -1;
+            }
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     private void checkValues(IconStyleSpinnerAdapter adapter) {
@@ -226,6 +325,7 @@ public class GuiActivity extends AppCompatActivity {
     }
 
     private void checkServiceStatus() {
+        if (repopulate != null) repopulate.cancel();
         //checking for changed every 2 sec
         repopulate = new CountDownTimer(2000, 2000) {
             @Override
@@ -237,5 +337,13 @@ public class GuiActivity extends AppCompatActivity {
             }
         };
         repopulate.start();
+    }
+
+    @Override
+    protected void onPause() {
+        Helper.setCapturingDensityKey(false);
+        capturedDensityKey = -1;
+        if (repopulate != null) repopulate.cancel();
+        super.onPause();
     }
 }

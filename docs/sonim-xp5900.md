@@ -69,6 +69,74 @@ style names map to Dark. Changing appearance leaves the cursor's screen position
 unchanged: the arrow tip remains the root click coordinate at every size. At the
 screen edges, the cursor body may be clipped rather than shifting that coordinate.
 
+## Speaker-key screen density
+
+This changes **logical display density**, like `wm density`, rather than the
+physical 240 x 320 resolution. The inspected XP5900 reports **160 dpi** as its
+factory value; the implementation reads the factory value from WindowManager.
+
+In MATVT settings:
+
+1. Leave mouse mode before using **Detect key**.
+2. Set **Compact DPI** (default **100**, minimum **72**, strictly below factory).
+3. The default is **290**, the XP5900 Speaker Android key code confirmed by the
+   device owner. You can enter another code, or press **Detect key** and tap the
+   desired button. Linux scan code 213 from the key layout is not this Android code.
+4. Turn on **Enable density hotkey** and save. The feature is off by default.
+5. In mouse or scroll mode, hold the selected key for **800 ms** to toggle compact
+   and factory scale. Repeats and release do not toggle a second time.
+
+### Phone-feature conflicts
+
+The [Sonim global guide, page 24](https://sonim-tech.files.svdcdn.com/production/documents/xp5plus_downloads/Userguides/Sonim_XP5plus_UG_ROW_090722_Final.pdf)
+assigns a long Speaker press to **Voice Commands**, and Speaker switches call
+audio between earpiece, loudspeaker and accessories. Disable Sonim's
+**Settings → Accessibility → Voice Command** to avoid vendor handling the hold
+before Android's accessibility filter.
+
+MATVT reserves the complete key press only with mouse mode and this feature on,
+on an unlocked/interactive display, and in `AudioManager.MODE_NORMAL`. Ringing,
+in-call, communication/VoIP and unknown audio modes bypass the density hotkey.
+The mode is checked again when the hold fires. A detected call also restores an
+active density lease. No phone-state runtime permission is added. Vendor-specific
+call behavior still needs verification on the actual phone.
+
+PTT/mouse activation, D-pad/Enter, hash/star, Home/Back, call/end-call, volume,
+power and existing mouse/scroll keys cannot be assigned as the density hotkey.
+When reserved outside calls, short presses are consumed too, to prevent the
+native Speaker/voice action from starting alongside the density toggle.
+
+### Restoration and recovery
+
+With this feature enabled, entering mouse mode acquires a density lease. This
+also adopts an existing manual override, without changing it immediately. Leaving
+mouse mode, disabling/editing the feature, locking the screen or stopping the
+service clears the override to the **factory value**, not to a previous override.
+With the feature off and no pending MATVT recovery, unrelated manual density
+settings are left alone.
+
+`DensityGuard` is a separate root process in its own process session. It restores
+factory density on a normal reset/QUIT, pipe EOF, or roughly four seconds without
+heartbeat. Killing the root touch executor therefore does not kill the guard.
+An inter-process file lock serializes old/new owners, and a durable marker in the
+app's private files is written before changing density and removed only after a
+successful reset. If both root processes are killed, or the device loses power,
+immediate cleanup is impossible; service connection, boot/package-update recovery
+and the next root-helper startup retry the pending reset. Root access must still
+be available for that recovery.
+
+Manual recovery, if needed: `adb shell wm density reset` (or
+`adb shell su -c 'wm density reset'` if the shell lacks permission).
+
+The backend calls the same `IWindowManager` methods as `wm density` and
+`wm density reset` for the current user. Scaling does not change cursor pixel
+coordinates or cursor size. A density change cannot overlap a held touch, and a
+reset is queued even when a density change is already in flight.
+
+Emulator checks cover 100/factory toggles, custom 120 dpi, adoption of a manual
+override, idle heartbeats, explicit reset, EOF, SIGKILL of the executor, loss of
+heartbeat, SIGKILL of the guard, and startup recovery after both are killed.
+
 ## Implementation and limitations
 
 `RootInput` starts a persistent Java process using `su -c` and `app_process`, loading
@@ -90,15 +158,15 @@ the process. Scrolling still uses 250 ms swipes, repeated only after completion;
 an already-started swipe finishes normally. Additional presses while a previous
 gesture is finishing are rejected with a busy message instead of replayed later.
 
-While the key is held, the service sends a heartbeat once per second. A server-side
+While mouse mode is enabled, the service sends a heartbeat once per second. A server-side
 watchdog cancels the contact and exits after approximately four seconds without a
 heartbeat, covering a stalled/disconnected client. This is a connection lease, not
 a maximum hold duration. EOF, QUIT, command failures, cancelled key events, mode
 changes and service shutdown also trigger cancellation. Back/Home/app-switch/power
 keys cancel a held contact before being passed through.
 
-Root startup has a 30-second timeout; individual acknowledgements have a 5-second
-timeout. These timeouts do not limit a healthy hold. On failure, MATVT restores
+Root startup has a 30-second timeout; input acknowledgements have a 5-second
+timeout, and density operations have a 10-second timeout. These timeouts do not limit a healthy hold. On failure, MATVT restores
 normal D-pad input and logs the reason under **`MATVT-Root`**. After correcting
 authorization, hold PTT to retry. Disabling the accessibility service releases the
 root process and cursor overlay.
