@@ -30,6 +30,23 @@ In the [prototype discussion](https://chatgpt.com/share/6ae86445-8b50-83ed-9f24-
 - The activation key defaults to **289**, including the empty custom-key field.
   Existing explicit overrides remain in effect; uncheck **Override Activation Key**
   to use the new default.
+- Locking or turning off the screen disables mouse/scroll mode, cancels a held
+  contact and closes the root helper. After waking/unlocking, normal D-pad input
+  remains active; hold PTT again to enable the mouse.
+
+## Lock-screen handling
+
+The accessibility service listens for screen-off, screen-on and user-present
+broadcasts, and checks `PowerManager.isInteractive()` and
+`KeyguardManager.isKeyguardLocked()` before processing any key. The latter also
+covers non-PIN keyguards. Window-state events detect locking without screen-off.
+
+While the screen is off or keyguard is showing, all keys pass through to Android,
+including the Sonim's hash unlock key, PTT and Home. Presses that began before
+suspension or on the lock screen keep passing through until released, even if
+unlocking happens mid-hold. A fresh press is required to activate MATVT afterward.
+Suspension discards the old engine, overlay, activation timers and consumed-key
+state, so a delayed root-ready callback cannot re-enable the mouse after locking.
 
 ## Cursor appearance
 
@@ -128,6 +145,9 @@ On the XP5900, check in TouchDetector and then a normal app:
     failed activation leaves normal navigation working; grant access and retry.
 7. While holding the center key, switch off mouse mode or stop the accessibility
    service. The target app should receive CANCEL rather than an extra click.
+8. Enable the mouse, lock and wake the screen, and unlock using hash. Verify normal
+   key handling, no cursor on the lock screen, and no automatic mouse reactivation.
+   Repeat while holding the center key and while PTT activation is still pending.
 
 Successful operations log their acknowledgement time as `Root down`, `Root up`,
 `Root cancel` or `Root scroll`. Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
