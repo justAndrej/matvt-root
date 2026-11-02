@@ -134,7 +134,7 @@ public class GuiActivity extends AppCompatActivity {
 
     private void showBossLayout(boolean status) {
         if (status) boss_override.setVisibility(View.VISIBLE);
-        else boss_override.setVisibility(View.INVISIBLE);
+        else boss_override.setVisibility(View.GONE);
     }
 
 
