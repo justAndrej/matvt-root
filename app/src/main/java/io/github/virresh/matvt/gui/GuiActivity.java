@@ -13,6 +13,7 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.Spinner;
@@ -26,7 +27,9 @@ import java.util.Arrays;
 import java.util.List;
 
 import io.github.virresh.matvt.R;
+import io.github.virresh.matvt.helper.CursorAppearance;
 import io.github.virresh.matvt.helper.Helper;
+import io.github.virresh.matvt.view.CursorDrawable;
 
 public class GuiActivity extends AppCompatActivity {
     CountDownTimer repopulate;
@@ -39,6 +42,8 @@ public class GuiActivity extends AppCompatActivity {
 
     Spinner sp_mouse_icon;
     SeekBar dsbar_mouse_size;
+    TextView cursor_size_label;
+    ImageView cursor_preview;
 
     public static int ACTION_MANAGE_OVERLAY_PERMISSION_REQUEST_CODE = 701;
     public static int ACTION_ACCESSIBILITY_PERMISSION_REQUEST_CODE = 702;
@@ -58,12 +63,17 @@ public class GuiActivity extends AppCompatActivity {
         cb_override = findViewById(R.id.cb_override);
         sp_mouse_icon = findViewById(R.id.sp_mouse_icon);
         dsbar_mouse_size = findViewById(R.id.dsbar_mouse_size);
+        dsbar_mouse_size.setMax(CursorAppearance.MAX_SIZE_STEP);
+        dsbar_mouse_size.setKeyProgressIncrement(1);
+        cursor_size_label = findViewById(R.id.cursor_size_label);
+        cursor_preview = findViewById(R.id.cursor_preview);
 
         // render icon style dropdown
         IconStyleSpinnerAdapter iconStyleSpinnerAdapter = new IconStyleSpinnerAdapter(this, R.layout.spinner_icon_text_gui, R.id.textView, IconStyleSpinnerAdapter.getResourceList());
         sp_mouse_icon.setAdapter(iconStyleSpinnerAdapter);
 
         checkValues(iconStyleSpinnerAdapter);
+        updateCursorPreview();
         showBossLayout(cb_override.isChecked());
         cb_override.setOnCheckedChangeListener((compoundButton, b) -> {
             showBossLayout(b);
@@ -89,10 +99,8 @@ public class GuiActivity extends AppCompatActivity {
             // the listener is set after setting initial value to avoid echo if any
             @Override
             public void onItemSelected(AdapterView<?> adapterView, View view, int pos, long id) {
-                Context ctx = getApplicationContext();
-                String style = iconStyleSpinnerAdapter.getItem(pos);
-                Helper.setMouseIconPref(ctx, iconStyleSpinnerAdapter.getItem(pos));
-//                Toast.makeText(ctx, "Icon style set to "+style+". Changes will take effect from next restart.", Toast.LENGTH_SHORT).show();
+                Helper.setMouseIconPref(GuiActivity.this, iconStyleSpinnerAdapter.getItem(pos));
+                updateCursorPreview();
             }
 
             @Override
@@ -103,10 +111,8 @@ public class GuiActivity extends AppCompatActivity {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if (fromUser) {
-                    // do not do anything if the progress change was done programmatically
-                    Context ctx = getApplicationContext();
-                    Helper.setMouseSizePref(ctx, progress);
-//                    Toast.makeText(ctx, "Mouse size set. Changes will take effect from next restart.", Toast.LENGTH_SHORT).show();
+                    Helper.setMouseSizePref(GuiActivity.this, progress);
+                    updateCursorPreview();
                 }
             }
 
@@ -132,7 +138,13 @@ public class GuiActivity extends AppCompatActivity {
         sp_mouse_icon.setSelection(adapter.getPosition(iconStyle));
 
         int mouseSize = Helper.getMouseSizePref(ctx);
-        dsbar_mouse_size.setProgress(Math.max(Math.min(mouseSize, 4), 0));
+        dsbar_mouse_size.setProgress(mouseSize);
+    }
+
+    private void updateCursorPreview() {
+        int sizeStep = Helper.getMouseSizePref(this);
+        cursor_size_label.setText(getString(R.string.cursor_size_label, CursorAppearance.heightPx(sizeStep)));
+        cursor_preview.setImageDrawable(new CursorDrawable(sizeStep, Helper.getMouseIconPref(this)));
     }
 
     private void showBossLayout(boolean status) {

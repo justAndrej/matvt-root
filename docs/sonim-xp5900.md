@@ -29,6 +29,27 @@ In the [prototype discussion](https://chatgpt.com/share/6ae86445-8b50-83ed-9f24-
   Existing explicit overrides remain in effect; uncheck **Override Activation Key**
   to use the new default.
 
+## Cursor appearance
+
+The XP5900/XP5plus has a **240 x 320 pixel, 2.8-inch display** according to the
+[Sonim specifications](https://www.sonimtech.com/products/phones/xp5plus).
+For comparison, the [Android 11 mdpi arrow](https://raw.githubusercontent.com/aosp-mirror/platform_frameworks_base/android-11.0.0_r1/core/res/res/drawable-mdpi/pointer_arrow.png)
+has a 22 x 28 pixel canvas. This fork uses a **24-pixel-high cursor by default**,
+with five slider positions: **16, 20, 24, 28 and 32 pixels**. These are screen
+pixels, independent of bitmap density or Android's display scaling setting.
+
+In settings, use left/right on the focused size slider. The label shows its height
+and the preview displays it at actual size, even with mouse mode off. Dark and
+light styles have contrasting outlines and are drawn as vectors, without scaling
+the old 206 x 206 PNGs. Both size and style update the attached overlay immediately;
+there is no need to reconnect the accessibility service or toggle PTT.
+
+Existing saved slider positions (0–4) are retained and mapped to the new sizes.
+An unset size defaults to the middle position, 24 px. Legacy `default`/`Default`
+style names map to Dark. Changing appearance leaves the cursor's screen position
+unchanged: the arrow tip remains the root click coordinate at every size. At the
+screen edges, the cursor body may be clipped rather than shifting that coordinate.
+
 ## Implementation and limitations
 
 `RootShell` keeps one `su` process open and verifies UID 0 before enabling mouse

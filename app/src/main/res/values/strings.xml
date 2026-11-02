@@ -17,6 +17,11 @@
     <string name="mode_mouse">Mouse Mode (root)</string>
     <string name="mode_scroll">Scroll Mode (root)</string>
     <string name="mode_dpad">D-Pad Mode</string>
+    <string name="cursor_size_label">Cursor size: %1$d px</string>
+    <string name="cursor_preview">Cursor preview at actual size</string>
+    <string name="cursor_style_label">Style</string>
+    <string name="cursor_style_dark">Dark</string>
+    <string name="cursor_style_light">Light</string>
     <string-array name="mouse_style_arr">
         <item>Dark (default)</item>
         <item>Light</item>

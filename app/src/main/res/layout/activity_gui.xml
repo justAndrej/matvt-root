@@ -86,13 +86,35 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <TextView
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Mouse Size (Low to High)"
-                android:textAlignment="textStart"
-                android:textColor="@color/white"
-                android:textSize="20.0sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/cursor_size_label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:labelFor="@id/dsbar_mouse_size"
+                    android:textAlignment="textStart"
+                    android:textColor="@color/white"
+                    android:textSize="16sp" />
+
+                <ImageView
+                    android:id="@+id/cursor_preview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/cursor_preview_background"
+                    android:contentDescription="@string/cursor_preview"
+                    android:minWidth="40dp"
+                    android:minHeight="40dp"
+                    android:padding="4dp"
+                    android:scaleType="center" />
+
+            </LinearLayout>
 
             <SeekBar
                 android:id="@+id/dsbar_mouse_size"
@@ -101,10 +123,8 @@
                 android:layout_height="wrap_content"
                 android:focusable="true"
                 android:foregroundTint="@color/white"
-                android:max="4"
                 android:nextFocusUp="@id/gui_setup_perm"
                 android:nextFocusDown="@id/sp_mouse_icon"
-                android:progress="1"
                 android:progressBackgroundTint="@color/white_2"
                 android:progressTint="@color/white"
                 android:thumbTint="@color/white"
@@ -116,23 +136,24 @@
             android:id="@+id/mouse_icon"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:weightSum="1">
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="0.5"
-                android:text="Mouse Icon"
+                android:layout_marginEnd="8dp"
+                android:labelFor="@id/sp_mouse_icon"
+                android:text="@string/cursor_style_label"
                 android:textAlignment="textStart"
                 android:textColor="@color/white"
-                android:textSize="20.0sp" />
+                android:textSize="16sp" />
 
             <Spinner
                 android:id="@+id/sp_mouse_icon"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:layout_weight="0.5"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:drawSelectorOnTop="true"
                 android:dropDownWidth="match_parent"
                 android:nextFocusUp="@id/dsbar_mouse_size"

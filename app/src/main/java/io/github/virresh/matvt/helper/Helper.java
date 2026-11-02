@@ -20,6 +20,14 @@ public class Helper {
     static final String PREF_KEY_MOUSE_ICON = "MOUSE_ICON";
     static final String PREF_KEY_MOUSE_SIZE = "MOUSE_SIZE";
 
+    public static SharedPreferences getPreferences(Context ctx) {
+        return ctx.getSharedPreferences(PREFS_ID, Context.MODE_PRIVATE);
+    }
+
+    public static boolean isCursorPreference(String key) {
+        return key == null || PREF_KEY_MOUSE_ICON.equals(key) || PREF_KEY_MOUSE_SIZE.equals(key);
+    }
+
     public static boolean isAccessibilityDisabled(Context ctx) {
         return !isAccServiceInstalled(ctx.getPackageName() + "/.services.MouseEventService", ctx);
     }
@@ -77,29 +85,23 @@ public class Helper {
     }
 
     public static String getMouseIconPref(Context ctx) {
-        SharedPreferences sp = ctx.getSharedPreferences(PREFS_ID, Context.MODE_PRIVATE);
-        return sp.getString(PREF_KEY_MOUSE_ICON, "default");
+        return CursorAppearance.normalizeStyle(getPreferences(ctx).getString(
+                PREF_KEY_MOUSE_ICON, CursorAppearance.DARK_STYLE));
     }
 
-    @SuppressLint("ApplySharedPref")
     public static void setMouseIconPref(Context ctx, String val) {
-        SharedPreferences sp = ctx.getSharedPreferences(PREFS_ID, Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = sp.edit();
-        editor.putString(PREF_KEY_MOUSE_ICON, val);
-        editor.commit();
+        getPreferences(ctx).edit().putString(PREF_KEY_MOUSE_ICON,
+                CursorAppearance.normalizeStyle(val)).apply();
     }
 
     public static int getMouseSizePref(Context ctx) {
-        SharedPreferences sp = ctx.getSharedPreferences(PREFS_ID, Context.MODE_PRIVATE);
-        return sp.getInt(PREF_KEY_MOUSE_SIZE, 1);
+        return CursorAppearance.clampSizeStep(getPreferences(ctx).getInt(
+                PREF_KEY_MOUSE_SIZE, CursorAppearance.DEFAULT_SIZE_STEP));
     }
 
-    @SuppressLint("ApplySharedPref")
     public static void setMouseSizePref(Context ctx, int val) {
-        SharedPreferences sp = ctx.getSharedPreferences(PREFS_ID, Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = sp.edit();
-        editor.putInt(PREF_KEY_MOUSE_SIZE, val);
-        editor.commit();
+        getPreferences(ctx).edit().putInt(PREF_KEY_MOUSE_SIZE,
+                CursorAppearance.clampSizeStep(val)).apply();
     }
 
 }
