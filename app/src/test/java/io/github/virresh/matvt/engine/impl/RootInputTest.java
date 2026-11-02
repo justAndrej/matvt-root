@@ -235,7 +235,7 @@ public class RootInputTest {
         return input;
     }
 
-    @Test public void idleHeartbeatKeepsDensityGuardAliveWithoutATouch() throws Exception {
+    @Test public void idleHeartbeatChecksExecutorWithoutATouch() throws Exception {
         FakeProcess process = new FakeProcess();
         try (RootInput input = connected(process)) {
             Completion ping = new Completion();

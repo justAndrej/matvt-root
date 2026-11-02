@@ -6,20 +6,34 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.util.concurrent.TimeUnit;
 
-/** The guard owns this lock until restoration finishes, excluding old/new service races. */
+/** The touch executor owns this lock until restoration finishes, excluding old/new service races. */
 final class DensityJournal implements DensitySession.Journal, Closeable {
     private final File marker;
     private final RandomAccessFile lockFile;
     private FileLock lock;
 
     DensityJournal(String path) throws IOException, InterruptedException {
+        this(path, true);
+    }
+
+    static DensityJournal tryOpen(String path) throws IOException, InterruptedException {
+        DensityJournal journal = new DensityJournal(path, false);
+        return journal.lock == null ? null : journal;
+    }
+
+    private DensityJournal(String path, boolean wait) throws IOException, InterruptedException {
         marker = new File(path);
         lockFile = new RandomAccessFile(path + ".lock", "rw");
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(6);
         try {
-            while ((lock = lockFile.getChannel().tryLock()) == null) {
+            while ((lock = tryLock()) == null) {
+                if (!wait) {
+                    lockFile.close();
+                    return;
+                }
                 if (System.nanoTime() >= deadline) throw new IOException("Previous density owner is still active");
                 Thread.sleep(50);
             }
@@ -27,6 +41,11 @@ final class DensityJournal implements DensitySession.Journal, Closeable {
             lockFile.close();
             throw exception;
         }
+    }
+
+    private FileLock tryLock() throws IOException {
+        try { return lockFile.getChannel().tryLock(); }
+        catch (OverlappingFileLockException ignored) { return null; }
     }
 
     @Override public boolean pending() { return marker.exists(); }

@@ -28,6 +28,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import io.github.virresh.matvt.R;
+import io.github.virresh.matvt.engine.impl.DensityRecovery;
 import io.github.virresh.matvt.helper.CursorAppearance;
 import io.github.virresh.matvt.helper.DensitySettings;
 import io.github.virresh.matvt.helper.Helper;
@@ -321,7 +322,7 @@ public class GuiActivity extends AppCompatActivity {
         super.onResume();
         //Checking services status
         checkServiceStatus();
-
+        DensityRecovery.recoverIfNeeded(this, () -> { });
     }
 
     private void checkServiceStatus() {

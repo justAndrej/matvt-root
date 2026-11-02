@@ -115,15 +115,21 @@ service clears the override to the **factory value**, not to a previous override
 With the feature off and no pending MATVT recovery, unrelated manual density
 settings are left alone.
 
-`DensityGuard` is a separate root process in its own process session. It restores
-factory density on a normal reset/QUIT, pipe EOF, or roughly four seconds without
-heartbeat. Killing the root touch executor therefore does not kill the guard.
-An inter-process file lock serializes old/new owners, and a durable marker in the
-app's private files is written before changing density and removed only after a
-successful reset. If both root processes are killed, or the device loses power,
-immediate cleanup is impossible; service connection, boot/package-update recovery
-and the next root-helper startup retry the pending reset. Root access must still
-be available for that recovery.
+Density is managed by `DensityController` **inside the existing root touch
+executor**. There is no second resident root process or density watchdog. Normal
+reset/QUIT and pipe EOF restore factory density directly.
+
+A marker in the app's private files is written before the override and removed
+only after a successful reset. If the executor is killed or the device loses
+power, compact density may remain in effect. Opening/returning to MATVT with mouse
+mode off, reconnecting the accessibility service, or starting the next mouse
+executor retries the pending restoration. Recovery uses a short-lived invocation
+of the same executor and then exits; no boot/package-update receiver is needed.
+Root access must still be available for restoration.
+
+The inter-process lock prevents recovery from resetting an active mouse session.
+Opening settings while the mouse is using compact density leaves that working
+mode alone. Old/new executor shutdown and startup are also serialized by this lock.
 
 Manual recovery, if needed: `adb shell wm density reset` (or
 `adb shell su -c 'wm density reset'` if the shell lacks permission).
@@ -133,9 +139,8 @@ The backend calls the same `IWindowManager` methods as `wm density` and
 coordinates or cursor size. A density change cannot overlap a held touch, and a
 reset is queued even when a density change is already in flight.
 
-Emulator checks cover 100/factory toggles, custom 120 dpi, adoption of a manual
-override, idle heartbeats, explicit reset, EOF, SIGKILL of the executor, loss of
-heartbeat, SIGKILL of the guard, and startup recovery after both are killed.
+Density checks cover 100/factory toggles, explicit reset, EOF, an override remaining
+after SIGKILL, recovery on the next startup, and recovery skipping a live owner.
 
 ## Implementation and limitations
 
@@ -158,10 +163,11 @@ the process. Scrolling still uses 250 ms swipes, repeated only after completion;
 an already-started swipe finishes normally. Additional presses while a previous
 gesture is finishing are rejected with a busy message instead of replayed later.
 
-While mouse mode is enabled, the service sends a heartbeat once per second. A server-side
-watchdog cancels the contact and exits after approximately four seconds without a
-heartbeat, covering a stalled/disconnected client. This is a connection lease, not
-a maximum hold duration. EOF, QUIT, command failures, cancelled key events, mode
+While mouse mode is enabled, the service sends a heartbeat once per second. The
+existing touch watchdog cancels an active contact and exits after approximately
+four seconds without a heartbeat, covering a stalled/disconnected client. It also
+attempts normal density cleanup before exiting. This protects held touches; it is
+not a density watchdog or a maximum hold duration. EOF, QUIT, command failures, cancelled key events, mode
 changes and service shutdown also trigger cancellation. Back/Home/app-switch/power
 keys cancel a held contact before being passed through.
 

@@ -24,6 +24,3 @@
 -keep class io.github.virresh.matvt.engine.root.RootTouchServer {
     public static void main(java.lang.String[]);
 }
--keep class io.github.virresh.matvt.engine.root.DensityGuard {
-    public static void main(java.lang.String[]);
-}

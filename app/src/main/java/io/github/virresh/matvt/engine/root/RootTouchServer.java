@@ -25,15 +25,16 @@ public final class RootTouchServer {
         PrintWriter output = new PrintWriter(System.out, true);
         ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor();
         TouchSession touch = null;
-        DensityClient density = new DensityClient(args.length == 1 ? args[0] : null);
+        DensityController density = new DensityController(args.length > 0 ? args[0] : null);
+        boolean recoveryOnly = args.length == 2 && "--recover-density".equals(args[1]);
         int exitCode = 0;
         long request = 0;
         try {
             int uid = Process.myUid();
             // UID 2000 permits isolated adb/emulator verification. The app client requires UID 0.
             if (uid != 0 && uid != 2000) throw new IOException("Root or Android shell UID required");
-            density.recover();
             if (Looper.getMainLooper() == null) Looper.prepareMainLooper();
+            density.recover(recoveryOnly);
             touch = new TouchSession(SystemClock::uptimeMillis, new AndroidInjector());
             TouchSession session = touch;
             watchdog.scheduleAtFixedRate(() -> {
@@ -43,6 +44,8 @@ public final class RootTouchServer {
                 } catch (IOException exception) {
                     output.println("MATVT_ERROR 0 " + diagnostic(exception));
                 }
+                try { density.close(); }
+                catch (IOException exception) { output.println("MATVT_ERROR 0 Density cleanup: " + diagnostic(exception)); }
                 System.exit(1);
             }, 500, 500, TimeUnit.MILLISECONDS);
             output.println("MATVT_READY 1 " + uid);
@@ -56,6 +59,9 @@ public final class RootTouchServer {
                     if (parts.length < 2) throw new IOException("Missing command");
                     request = Long.parseLong(parts[0]);
                     if (request <= 0) throw new IOException("Invalid request ID");
+                    if (recoveryOnly && !parts[1].equals("PING") && !parts[1].equals("QUIT")) {
+                        throw new IOException("Recovery-only executor cannot inject input or change density");
+                    }
                     String payload = "";
                     switch (parts[1]) {
                         case "DOWN":
@@ -73,7 +79,6 @@ public final class RootTouchServer {
                         case "PING":
                             requireLength(parts, 2);
                             touch.heartbeat();
-                            density.heartbeat();
                             break;
                         case "SWIPE":
                             requireLength(parts, 7);
