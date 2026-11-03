@@ -352,6 +352,17 @@ public class MouseEmulationEngine {
         }));
     }
 
+    private void restoreKeyboardMode() {
+        densityCompact = false;
+        densityManaged = false;
+        densityArmPending = false;
+        rootInput.enterKeyboardMode(result -> handler.post(() -> {
+            if (destroyed) return;
+            if (!result.isSuccess()) reportTouch("keyboard mode", result);
+            else Log.i(LOG_TAG, "Keyboard navigation: " + result.output);
+        }));
+    }
+
     private void reportTouch(String name, RootInput.Result result) {
         if (destroyed) return;
         if (!result.isSuccess() && !enabled && !enabling) {
@@ -434,7 +445,7 @@ public class MouseEmulationEngine {
         stopMotion();
         cancelDensityHold();
         cancelClick();
-        restoreDensity();
+        restoreKeyboardMode();
         handler.removeCallbacks(sessionHeartbeat);
         handler.removeCallbacks(hideCursor);
         pointer.disappear();

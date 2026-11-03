@@ -42,11 +42,52 @@ broadcasts, and checks `PowerManager.isInteractive()` and
 covers non-PIN keyguards. Window-state events detect locking without screen-off.
 
 While the screen is off or keyguard is showing, all keys pass through to Android,
-including the Sonim's hash unlock key, PTT and Home. Presses that began before
+including the Sonim's star (`*`) unlock key, PTT and Home. Presses that began before
 suspension or on the lock screen keep passing through until released, even if
 unlocking happens mid-hold. A fresh press is required to activate MATVT afterward.
 Suspension discards the old engine, overlay, activation timers and consumed-key
 state, so a delayed root-ready callback cannot re-enable the mouse after locking.
+
+### Experimental keyboard-mode restoration
+
+The XP5900 unlock issue was reproduced after both `input touchscreen tap` and
+`input mouse tap`, with the MATVT accessibility service disabled. Moving the
+cursor alone did not reproduce it. During one failed unlock, the dispatcher had
+no active touch and the global `mInTouchMode` flag was already false, so the exact
+Sonim keyguard defect is still unconfirmed.
+
+This build tests restoring keyboard navigation **before the next lock-screen
+appearance**. When mouse mode is turned off, `DPAD_MODE` is queued after the
+contact's terminal event. It cancels any remaining contact, restores owned density,
+then calls the public `Instrumentation.setInTouchMode(false)` SDK wrapper in the
+existing root executor. On Android 11 it invokes `IWindowManager.setInTouchMode(false)`;
+the framework handles the newer WindowManager signatures on later releases. No key
+press is synthesized and the lock screen is not dismissed.
+
+UP/CANCEL now use `INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH`, so the receiving app
+finishes handling the release before keyboard mode is restored. DOWN/MOVE retain
+`WAIT_FOR_RESULT`. QUIT, EOF and touch-timeout cleanup also attempt restoration
+if this executor injected a pointer DOWN since its last restoration. A density-only
+recovery invocation does not alter another input session's touch mode.
+
+Diagnostics:
+
+- App Logcat: `MATVT-Root` → `Keyboard navigation: KEYBOARD_MODE_RESTORED`.
+- Root executor Logcat: `MATVT-InputMode` → `setInTouchMode(false) completed`.
+- Exceptions from the call are reported as errors. The success log confirms that
+  the SDK call returned, not that Sonim's keyguard is fixed. The SDK itself may
+  swallow a WindowManager `RemoteException`, so on-device behavior is the final check.
+
+On an emulator, a test view deliberately delayed UP/CANCEL handling by 350 ms.
+The executor waited for that handler to finish, then successfully changed touch
+mode to keyboard mode. QUIT/EOF restoration and density-only recovery isolation
+were also checked. The Android 11/Sonim branch still needs an on-device trial.
+
+For that trial, begin after a reboot and keep the density hotkey disabled to
+isolate this change. Tap in TouchDetector using MATVT, turn mouse mode off with
+PTT, then lock/wake and try the first hold of **star (`*`)**. Repeat several times.
+Separately check locking directly while mouse mode is still on: that exercises
+the screen-off cleanup timing rather than an earlier manual switch to D-pad.
 
 ## Cursor appearance
 
@@ -219,7 +260,7 @@ On the XP5900, check in TouchDetector and then a normal app:
     failed activation leaves normal navigation working; grant access and retry.
 7. While holding the center key, switch off mouse mode or stop the accessibility
    service. The target app should receive CANCEL rather than an extra click.
-8. Enable the mouse, lock and wake the screen, and unlock using hash. Verify normal
+8. Enable the mouse, lock and wake the screen, and unlock using star (`*`). Verify normal
    key handling, no cursor on the lock screen, and no automatic mouse reactivation.
    Repeat while holding the center key and while PTT activation is still pending.
 

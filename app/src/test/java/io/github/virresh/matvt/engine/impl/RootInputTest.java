@@ -235,6 +235,78 @@ public class RootInputTest {
         return input;
     }
 
+    @Test public void dpadModeWaitsForCancelAndBlocksNewInputUntilRestored() throws Exception {
+        FakeProcess process = new FakeProcess();
+        try (RootInput input = connected(process)) {
+            process.blockPrefix = "DOWN";
+            input.down(120, 145, result -> { });
+            await(process.blocked);
+            Completion restored = new Completion();
+            input.enterKeyboardMode(restored);
+            assertFalse(input.down(10, 20, result -> fail("Input during keyboard-mode restoration")));
+            assertFalse(input.swipe("SWIPE 0 0 10 20 250", result -> fail("Swipe during restoration")));
+            assertFalse(input.prepare(result -> fail("Activation before restoration")));
+            process.unblock();
+            assertEquals("KEYBOARD_MODE_RESTORED", restored.result().output);
+            assertEquals("CANCEL", process.commands.get(2));
+            assertEquals("DPAD_MODE", process.commands.get(3));
+            Completion released = new Completion();
+            assertTrue(input.down(10, 20, result -> { }));
+            input.finishTouch(false, released);
+            assertTrue(released.result().isSuccess());
+        }
+    }
+
+    @Test public void dpadModeCannotBeDroppedWhileDensityIsChanging() throws Exception {
+        FakeProcess process = new FakeProcess();
+        try (RootInput input = connected(process)) {
+            process.blockPrefix = "DENSITY_TOGGLE";
+            input.toggleDensity(100, result -> { });
+            await(process.blocked);
+            Completion restored = new Completion();
+            input.enterKeyboardMode(restored);
+            process.unblock();
+            assertTrue(restored.result().isSuccess());
+            assertEquals("DENSITY_TOGGLE 100", process.commands.get(1));
+            assertEquals("DPAD_MODE", process.commands.get(2));
+        }
+    }
+
+    @Test public void queuedKeyboardRestorationSurvivesServiceShutdown() throws Exception {
+        FakeProcess process = new FakeProcess();
+        RootInput input = connected(process);
+        process.blockPrefix = "DOWN";
+        input.down(120, 145, result -> { });
+        await(process.blocked);
+        input.enterKeyboardMode(result -> { });
+        input.close();
+        process.unblock();
+        await(process.ended);
+        assertEquals("CANCEL", process.commands.get(2));
+        assertEquals("DPAD_MODE", process.commands.get(3));
+        assertEquals("QUIT", process.commands.get(4));
+    }
+
+    @Test public void keyboardRestorationInvalidatesAnUnsentDensityToggle() throws Exception {
+        FakeProcess process = new FakeProcess();
+        CountDownLatch prepared = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        try (RootInput input = new RootInput(() -> process, 1000, 1000)) {
+            input.prepare(result -> {
+                prepared.countDown();
+                try { resume.await(); } catch (InterruptedException ignored) { }
+            });
+            await(prepared);
+            input.toggleDensity(100, result -> { });
+            Completion restored = new Completion();
+            input.enterKeyboardMode(restored);
+            resume.countDown();
+            assertTrue(restored.result().isSuccess());
+            assertEquals(2, process.commands.size());
+            assertEquals("DPAD_MODE", process.commands.get(1));
+        } finally { resume.countDown(); }
+    }
+
     @Test public void idleHeartbeatChecksExecutorWithoutATouch() throws Exception {
         FakeProcess process = new FakeProcess();
         try (RootInput input = connected(process)) {
@@ -332,7 +404,8 @@ public class RootInputTest {
                     blocked.countDown();
                     return;
                 }
-                String payload = command.equals("DENSITY_ARM") ? " DENSITY ORIGINAL 160"
+                String payload = command.equals("DPAD_MODE") ? " KEYBOARD_MODE_RESTORED"
+                        : command.equals("DENSITY_ARM") ? " DENSITY ORIGINAL 160"
                         : command.startsWith("DENSITY_TOGGLE ") ? " DENSITY COMPACT " + command.substring(15) : "";
                 respond("MATVT_OK " + parts[0] + payload);
                 if (command.equals("QUIT")) exit();

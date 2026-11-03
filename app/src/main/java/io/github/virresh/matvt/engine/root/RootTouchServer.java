@@ -3,6 +3,7 @@ package io.github.virresh.matvt.engine.root;
 import android.os.Looper;
 import android.os.Process;
 import android.os.SystemClock;
+import android.util.Log;
 import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.MotionEvent;
@@ -26,6 +27,7 @@ public final class RootTouchServer {
         ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor();
         TouchSession touch = null;
         DensityController density = new DensityController(args.length > 0 ? args[0] : null);
+        InputModeRestorer inputMode = new InputModeRestorer(WindowInputMode::enterKeyboardMode);
         boolean recoveryOnly = args.length == 2 && "--recover-density".equals(args[1]);
         int exitCode = 0;
         long request = 0;
@@ -35,7 +37,7 @@ public final class RootTouchServer {
             if (uid != 0 && uid != 2000) throw new IOException("Root or Android shell UID required");
             if (Looper.getMainLooper() == null) Looper.prepareMainLooper();
             density.recover(recoveryOnly);
-            touch = new TouchSession(SystemClock::uptimeMillis, new AndroidInjector());
+            touch = new TouchSession(SystemClock::uptimeMillis, new AndroidInjector(inputMode));
             TouchSession session = touch;
             watchdog.scheduleAtFixedRate(() -> {
                 try {
@@ -46,6 +48,8 @@ public final class RootTouchServer {
                 }
                 try { density.close(); }
                 catch (IOException exception) { output.println("MATVT_ERROR 0 Density cleanup: " + diagnostic(exception)); }
+                try { restoreInputMode(inputMode, false, "touch timeout"); }
+                catch (IOException exception) { output.println("MATVT_ERROR 0 Input mode cleanup: " + diagnostic(exception)); }
                 System.exit(1);
             }, 500, 500, TimeUnit.MILLISECONDS);
             output.println("MATVT_READY 1 " + uid);
@@ -88,8 +92,16 @@ public final class RootTouchServer {
                             requireLength(parts, 2);
                             touch.cancel();
                             density.close();
+                            restoreInputMode(inputMode, false, "QUIT");
                             output.println("MATVT_OK " + request);
                             return;
+                        case "DPAD_MODE":
+                            requireLength(parts, 2);
+                            touch.cancel();
+                            density.close();
+                            restoreInputMode(inputMode, true, "DPAD_MODE");
+                            payload = "KEYBOARD_MODE_RESTORED";
+                            break;
                         case "DENSITY_TOGGLE":
                             requireLength(parts, 3);
                             touch.cancel();
@@ -130,7 +142,18 @@ public final class RootTouchServer {
                 output.println("MATVT_ERROR 0 Density cleanup: " + diagnostic(exception));
                 exitCode = 1;
             }
+            try { restoreInputMode(inputMode, false, "EOF/error cleanup"); }
+            catch (IOException exception) {
+                output.println("MATVT_ERROR 0 Input mode cleanup: " + diagnostic(exception));
+                exitCode = 1;
+            }
             System.exit(exitCode);
+        }
+    }
+
+    private static void restoreInputMode(InputModeRestorer mode, boolean force, String reason) throws IOException {
+        if (mode.restore(force)) {
+            Log.i("MATVT-InputMode", "setInTouchMode(false) completed: " + reason);
         }
     }
 
@@ -165,8 +188,10 @@ public final class RootTouchServer {
         private final Object manager;
         private final Method inject;
         private final Method setDisplayId;
+        private final InputModeRestorer inputMode;
 
-        AndroidInjector() throws ReflectiveOperationException {
+        AndroidInjector(InputModeRestorer inputMode) throws ReflectiveOperationException {
+            this.inputMode = inputMode;
             Class<?> type;
             try {
                 type = Class.forName("android.hardware.input.InputManagerGlobal");
@@ -193,8 +218,11 @@ public final class RootTouchServer {
                     0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
             try {
                 setDisplayId.invoke(event, 0);
-                // WAIT_FOR_RESULT: preserve event order without waiting for application handlers.
-                if (!Boolean.TRUE.equals(inject.invoke(manager, event, 1))) {
+                if (action == TouchSession.DOWN) inputMode.pointerDown();
+                // UP/CANCEL must finish in the receiving app before we restore keyboard mode.
+                // DOWN/MOVE still use WAIT_FOR_RESULT for responsive motion and continuous holds.
+                int mode = action == TouchSession.UP || action == TouchSession.CANCEL ? 2 : 1;
+                if (!Boolean.TRUE.equals(inject.invoke(manager, event, mode))) {
                     throw new IOException("Touch injection was rejected");
                 }
             } catch (ReflectiveOperationException exception) {

@@ -8,12 +8,13 @@ public class ScreenInputGateTest {
     private static final int DOWN = 0;
     private static final int UP = 1;
     private static final int POUND = 18;
+    private static final int STAR = 17;
     private static final int PTT = 289;
 
     @Test
     public void lockedScreenGetsAllKeysIncludingActivationAndHome() {
         ScreenInputGate gate = new ScreenInputGate();
-        for (int key : new int[]{POUND, PTT, 3, 23, 66, 165}) {
+        for (int key : new int[]{STAR, POUND, PTT, 3, 23, 66, 165}) {
             assertTrue(gate.shouldPassThrough(true, 1, key, 100, DOWN, 0));
             assertTrue(gate.shouldPassThrough(true, 1, key, 100, DOWN, 1));
             assertTrue(gate.shouldPassThrough(true, 1, key, 100, UP, 0));
@@ -21,13 +22,13 @@ public class ScreenInputGateTest {
     }
 
     @Test
-    public void hashHeldThroughUnlockStaysWithThePhoneUntilRelease() {
+    public void starHeldThroughUnlockStaysWithThePhoneUntilRelease() {
         ScreenInputGate gate = new ScreenInputGate();
-        assertTrue(gate.shouldPassThrough(true, 1, POUND, 100, DOWN, 0));
-        assertTrue(gate.shouldPassThrough(false, 1, POUND, 100, DOWN, 1));
-        assertTrue(gate.shouldPassThrough(false, 1, POUND, 100, UP, 0));
-        assertFalse(gate.shouldPassThrough(false, 1, POUND, 200, DOWN, 0));
-        assertFalse(gate.shouldPassThrough(false, 1, POUND, 200, UP, 0));
+        assertTrue(gate.shouldPassThrough(true, 1, STAR, 100, DOWN, 0));
+        assertTrue(gate.shouldPassThrough(false, 1, STAR, 100, DOWN, 1));
+        assertTrue(gate.shouldPassThrough(false, 1, STAR, 100, UP, 0));
+        assertFalse(gate.shouldPassThrough(false, 1, STAR, 200, DOWN, 0));
+        assertFalse(gate.shouldPassThrough(false, 1, STAR, 200, UP, 0));
     }
 
     @Test

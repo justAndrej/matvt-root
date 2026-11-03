@@ -60,6 +60,7 @@ final class RootInput implements Closeable {
     private boolean heartbeatQueued;
     private boolean controlBusy;
     private boolean densityResetQueued;
+    private boolean keyboardResetQueued;
     private int densityGeneration;
     private Gesture gesture;
     // Accessed only by the worker, including disposal.
@@ -84,7 +85,7 @@ final class RootInput implements Closeable {
     }
 
     synchronized boolean prepare(Callback callback) {
-        if (closed || preparing || gesture != null || controlBusy || densityResetQueued) return false;
+        if (closed || preparing || gesture != null || controlBusy || densityResetQueued || keyboardResetQueued) return false;
         preparing = true;
         worker.execute(() -> {
             long start = System.nanoTime();
@@ -110,7 +111,7 @@ final class RootInput implements Closeable {
     }
 
     synchronized boolean down(int x, int y, Callback callback) {
-        if (closed || !ready || preparing || gesture != null || controlBusy || densityResetQueued) return false;
+        if (closed || !ready || preparing || gesture != null || controlBusy || densityResetQueued || keyboardResetQueued) return false;
         Gesture current = new Gesture(true);
         gesture = current;
         worker.execute(() -> {
@@ -159,13 +160,13 @@ final class RootInput implements Closeable {
     }
 
     synchronized void heartbeat(Callback callback) {
-        if (closed || !ready || heartbeatQueued || preparing || controlBusy || densityResetQueued
+        if (closed || !ready || heartbeatQueued || preparing || controlBusy || densityResetQueued || keyboardResetQueued
                 || (gesture != null && gesture.touch && gesture.finishQueued)) return;
         heartbeatQueued = true;
         worker.execute(() -> {
             boolean send;
             synchronized (this) {
-                send = !closed && ready && !controlBusy && !densityResetQueued
+                send = !closed && ready && !controlBusy && !densityResetQueued && !keyboardResetQueued
                         && (gesture == null || !gesture.touch || !gesture.finishQueued);
             }
             Result result = send ? command("PING") : success(System.nanoTime());
@@ -175,7 +176,7 @@ final class RootInput implements Closeable {
     }
 
     synchronized boolean swipe(String command, Callback callback) {
-        if (closed || !ready || preparing || gesture != null || controlBusy || densityResetQueued) return false;
+        if (closed || !ready || preparing || gesture != null || controlBusy || densityResetQueued || keyboardResetQueued) return false;
         Gesture current = new Gesture(false);
         gesture = current;
         worker.execute(() -> {
@@ -207,7 +208,7 @@ final class RootInput implements Closeable {
     }
 
     private boolean densityControl(String command, Callback callback) {
-        if (closed || !ready || preparing || gesture != null || controlBusy || densityResetQueued) return false;
+        if (closed || !ready || preparing || gesture != null || controlBusy || densityResetQueued || keyboardResetQueued) return false;
         controlBusy = true;
         int generation = densityGeneration;
         worker.execute(() -> {
@@ -221,12 +222,26 @@ final class RootInput implements Closeable {
     }
 
     synchronized void resetDensity(Callback callback) {
-        if (closed || !ready || preparing || densityResetQueued) return;
+        if (closed || !ready || preparing || densityResetQueued || keyboardResetQueued) return;
         densityGeneration++;
         densityResetQueued = true;
         worker.execute(() -> {
             Result result = session == null ? success(System.nanoTime()) : command("DENSITY_RESET");
             synchronized (this) { densityResetQueued = false; }
+            notify(callback, result);
+        });
+    }
+
+    synchronized void enterKeyboardMode(Callback callback) {
+        if (closed || !ready || preparing || keyboardResetQueued) return;
+        densityGeneration++; // Invalidate an unsent density toggle when leaving mouse mode.
+        keyboardResetQueued = true;
+        if (gesture != null && gesture.touch) queueFinish(gesture, true, result -> { });
+        worker.execute(() -> {
+            // Cleanup must still run if close() was called after it was queued.
+            Result result = session == null ? new Result(0, "KEYBOARD_MODE_SKIPPED_DISCONNECTED", 0)
+                    : command("DPAD_MODE");
+            synchronized (this) { keyboardResetQueued = false; }
             notify(callback, result);
         });
     }
