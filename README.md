@@ -173,6 +173,11 @@ for details.
 
 ## Build from source
 
+For a server-side build and publication, use the manual
+[GitHub Actions release workflow](docs/github-releases.md). Its form selects the
+source branch (default `phone-port`), release tag and Android versionCode. APKs are
+signed with the existing Studio key stored in GitHub Secrets.
+
 ```sh
 git clone --branch phone-port https://github.com/justAndrej/matvt-root.git
 cd matvt-root
@@ -205,7 +210,8 @@ JAVA_HOME=$(/usr/libexec/java_home -v 11) \
 
 - Installable debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
 - `:app:assembleRelease` produces `app/build/outputs/apk/release/app-release-unsigned.apk`;
-  sign it before installation.
+  it requires signing before installation and may hit the inherited Play target-SDK
+  lint check. The manual release workflow handles signing and that specific check.
 - New local Android Studio files under `.idea/` are ignored; existing tracked
   project settings remain versioned.
 
