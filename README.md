@@ -1,92 +1,242 @@
-#### Please read the After Install instructions carefully otherwise you might end up soft-bricking yourself (it's possible to recover, but why do you want to risk it, eh?)
+# MATVT
 
-# MATVT: Mouse for Android TV Toggle
+A root-enabled virtual mouse for Android keypad phones, developed for the
+**Sonim XP5900 / XP5plus**. Control a cursor, tap, hold and scroll using the
+phone's physical buttons.
 
-**Sonim XP5900 root build:** this branch injects taps, continuous holds and swipes through
-a persistent root touch process. The default activation key is **PTT (289)**.
-See [setup, controls, implementation and verification](docs/sonim-xp5900.md).
-An optional Speaker-key hold switches compact/factory screen density; the DPI and
-key are configurable, with automatic factory-scale restoration when mouse mode ends.
+> **Root is required.** Grant superuser access to **MATVT** in Magisk or your
+> compatible root manager. Overlay and accessibility permissions are also required.
+> Granting root to ADB or another app does not grant it to MATVT.
 
-Hard to reach portions of some legacy app that you're running on your Android TV?
-Feeling the need to have a touch input in your Android TV?
-Or just looking for an alternative to the famous Mouse Toggle App for your TV?
+**Active development is on [`phone-port`](https://github.com/justAndrej/matvt-root/tree/phone-port)
+in this repository.** This is a fork of [virresh/matvt](https://github.com/virresh/matvt),
+based on the upstream phone-port sources. The root implementation and phone fixes
+described here belong to this fork.
 
-MATVT solves all the above. Unfortunately, it's not on the playstore, and there are no plans to
-launch it there either. If you'd like to see it on playstore, please let me know in the issues
-tab (any support is also graciously accepted).
+- Displayed application name: **MATVT**.
+- Android package: `io.github.virresh.matvt`.
+- Primary validation device: **Sonim XP5900, Android 11, 240 × 320 display**.
+- [Detailed implementation, research and verification notes](docs/sonim-xp5900.md).
 
-## So what does this app do?
-MATVT is intended for users running Android TV (Android version 9+) and have a big remote with
-atleast the following:
-- DPAD (for up, down, left, right and center buttons)
-- Color buttons (Red, Green, Yellow, Blue)
-- Info button
+## Features and fixes
 
-After installing this app, you'll get a (*BIG*) mouse cursor that can move around, perform clicks and
-left / right / up / down swipes from your remote itself without any extra hardware (no need to pair
-with an android phone / laptop etc)
+| Area | What this fork adds |
+| --- | --- |
+| Root input | Real touch injection through one persistent local root executor, instead of accessibility gestures that were cancelled on the XP5900. No connected PC or network ADB is needed during normal use. |
+| Continuous holds | Center/Enter sends touch DOWN when pressed and UP when released. A long press lasts as long as the key is held; the receiving app decides when to recognize it. |
+| Mouse and scrolling | D-pad cursor movement with acceleration and edge wrapping; a separate scroll mode with directional swipes. Scroll repeats wait for the preceding swipe to finish. |
+| Phone-sized cursor | Five heights: **16, 20, 24, 28 and 32 px**, with **24 px** as the default. Dark and light vector arrows have contrasting outlines. |
+| Live appearance settings | Fixed the non-working size slider and delayed style changes. Both now update the overlay immediately, with an actual-size preview and numeric size label. The arrow tip stays on the click coordinate. |
+| Keypad-friendly settings | Scrollable settings screen and explicit D-pad focus navigation, including the custom activation-key field and Save button. |
+| Activation key | **PTT, Android key code 289**, by default; a custom activation key can be saved in settings. |
+| Screen density | Optional **Speaker-key hold, code 290**, toggles a configurable compact density (default **100 dpi**) and the factory density (**160 dpi on the inspected XP5900**). |
+| Density configuration | Feature toggle, DPI field, custom key code and key detection. Conflicting navigation, call and mouse-control keys are rejected. |
+| Density cleanup | Factory scale is restored when mouse mode ends, the feature is disabled/edited, or the screen locks. A pending marker supports recovery after a hard crash on the next app/service launch. No second resident root process is used. |
+| Lock-screen behavior | Screen-off/locking disables mouse mode and releases active input. Unlock keys pass through, including presses held across unlocking. The mouse stays off after wake. |
+| Sonim unlock fix | After finishing touch input, MATVT explicitly returns Android to keyboard navigation. The device owner verified successful unlocking with both mouse-on and mouse-off-before-lock scenarios. |
+| Failure handling | Ordered DOWN/UP/CANCEL events, bounded input work, timeouts and cleanup on service shutdown. Root failures return control to normal D-pad navigation. |
 
-## How to install?
-Download the APK from the releases section and side-load it on your TV.
-The source-code is open and available should you wish to inspect it / build it yourself / don't
-trust the release apk ;)
+## Requirements
 
-## To activate this on android phone lacking the accessibility settings screen such as flip phones
+1. A **rooted phone with working `su`**, tested with Magisk on the XP5900.
+2. Superuser permission for **MATVT** itself.
+3. Permission to **display over other apps**.
+4. The **Mouse Toggle Service** enabled in Android accessibility settings.
 
-Run the following adb commands
+Other devices and vendor ROMs need their own compatibility checks. The build's
+minimum SDK setting is not a claim that every Android version/device has been tested.
 
-  ```adb shell pm uninstall -k --user 0 com.lge.voicecommand
-  adb shell appops set io.github.virresh.matvt SYSTEM_ALERT_WINDOW allow
-  adb shell settings put secure accessibility_enabled 1
-  adb shell settings put secure enabled_accessibility_services io.github.virresh.matvt/io.github.virresh.matvt.services.MouseEventService
-  adb shell am startservice io.github.virresh.matvt/io.github.virresh.matvt.services.MouseEventService
-  ```
+## Install and set up
 
-## How to use?
-- D-pad arrows move the cursor. Center/Enter puts a finger down at the cursor and releases it when the key is released, supporting both short taps and continuous long presses.
-- The color buttons are for swiping. RED and GREEN for up/down swipe, YELLOW and BLUE for left/right swipe
-- Info button will instantly toggle mouse visibility (so you can switch between mouse and no mouse instantly)
-- ~~Pressing back button for more than 3 seconds will disable the accessibility service completely~~ This is now removed.
-- The mouse will auto-disappear after a short while and re-appear when you press another relevant button.
-- Toggling mouse visibility via the Info button resets cursor position
-- The mouse warps around your TV sides, so you can roll over from the top of your TV to the bottom instantly
-- Mouse movement is momentum based, so keeping key pressed for longer will increase the movement / send multiple swipes
-- A `Boss Key` toggles between mouse mode / scroll mode / dpad mode. In this fork it defaults to PTT (key code 289), and can be overridden in the configuration settings. Hold it to enable/disable the mouse; briefly press it while enabled to switch mouse/scroll mode.
+1. [Build the `phone-port` branch](#build-from-source), then install from Android
+   Studio or with:
 
+   ```sh
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   ```
 
-Shoutout to @sweenwolf for enhancing the app to work on tv boxes with less remote buttons.
-See a demo of the modified version in action by TechDoctorUK at:
-[https://youtu.be/UC7bPw2tG4c](https://youtu.be/UC7bPw2tG4c)
+2. Grant the overlay permission. On a phone without a usable settings switch:
 
-# Important points to know After Installing
-- Be sure to go to Special App Permissions in your settings and give permission to MATVT to draw over
-other system apps. If you don't do this step and enable the accessibility service beforehand, the app won't have
-necessary permissions to do anything and it'll keep consuming your input, so your remote will no longer work.
-If you have gotten yourself in this situation, see FAQ.
-- *AFTER* doing the above, you can go to accesibility settings and enable MATVT service.
-- Now you can press the info button and there you have your mouse
+   ```sh
+   adb shell appops set io.github.virresh.matvt SYSTEM_ALERT_WINDOW allow
+   adb shell appops get io.github.virresh.matvt SYSTEM_ALERT_WINDOW
+   ```
 
-# FAQs
+   The query should report `allow`. If the shell lacks permission, use:
 
-- **Is this tested?**
-  Yes, I have tested it on Sony Android TV. So any other Android TVs running Android 9 should work.
+   ```sh
+   adb shell su -c 'appops set io.github.virresh.matvt SYSTEM_ALERT_WINDOW allow'
+   ```
 
-- **I didn't follow instructions properly and have soft-bricked myself, now what?**
-  You'll need a physical mouse to go to accessibility services and disable MATVT. And this time before re-enabling it, please follow instructions and give the service proper permissions. You can also use a keyboard, but it'll be way more tedious.
+3. Enable **MATVT / Mouse Toggle Service** in accessibility settings. The app's
+   **Setup permissions** button opens the relevant settings screens.
 
-- **I didn't follow instructions and was not soft-bricked, why all the warnings?**
-  You should consider yourself lucky then :p. But be aware that the warnings are put there from a real experience. Though thanks to community contributions, this is probably fixed in some newer versions for most TV boxes.
+4. Hold PTT to activate the mouse. Allow MATVT's root request in Magisk.
 
-- **So, how does it work?**
-  You have the exact code in front of you, feel free to read it { It's not that bad ;) }. In a nutshell, this app uses Accessibility features provided by Android.
+ADB is optional for setup and installation; it is not the runtime input backend.
+Upstream TV/phone release APKs are separate builds, not this root fork.
 
-- **I think there's something that can be improved. How to contribute?**
-  I welcome all kinds of contributions. Documentation, Code tests, Actual Hardware Testing etc etc. Please feel free to create a Pull request and remind me in a couple of weeks if I forget about it :D
+<details>
+<summary>Enable accessibility through ADB when the vendor settings screen does not expose the service</summary>
 
+After installing MATVT, this command adds its service while preserving other
+enabled accessibility services:
 
-# Credits
-Thanks to EVA Facial Mouse for open sourcing their code. I've taken lots of ideas from their codebase. You can check them out at https://github.com/cmauri/eva_facial_mouse 
-Thanks to @sweenwolf for making this app work on remotes with less buttons, and for the app icons and fully transparent curson images  
-Thanks to TechDoctorUK for making a demo video  
-Thanks to @greatjack1 for making getting this app to flipphones
+```sh
+adb shell '
+service=io.github.virresh.matvt/io.github.virresh.matvt.services.MouseEventService
+short=io.github.virresh.matvt/.services.MouseEventService
+current=$(settings get secure enabled_accessibility_services)
+case "$current" in null|"") current= ;; esac
+case ":$current:" in
+  *":$service:"*|*":$short:"*) ;;
+  *)
+    if [ -z "$current" ]; then current="$service"; else current="$current:$service"; fi
+    settings put secure enabled_accessibility_services "$current"
+    ;;
+esac
+settings put secure accessibility_enabled 1
+'
+```
+
+</details>
+
+## Controls
+
+| Button / action | Result |
+| --- | --- |
+| Hold **PTT (289)** for about **800 ms** | Enable or disable mouse mode |
+| Briefly press PTT while enabled | Switch between mouse and scroll modes |
+| D-pad arrows in mouse mode | Move the cursor |
+| D-pad arrows in scroll mode | Scroll with directional swipes |
+| Press and release center / Enter | Tap at the cursor |
+| Hold center / Enter | Keep a virtual finger down until release |
+| Hold **Speaker (290)** for about **800 ms** | Toggle compact/factory density, if configured and enabled |
+| Lock or turn off the screen | Cancel input, disable the mouse and restore managed density |
+
+Confirmation accepts `DPAD_CENTER` (**23**), `ENTER` (**66**) and numpad Enter
+(**160**). Existing custom activation-key preferences remain in effect; turn off
+**Override Activation Key** to return to PTT 289.
+
+The cursor hides after inactivity. Legacy remotes can also use the Info key to
+toggle mouse mode and color keys for swipes. Holding center while moving the
+D-pad is not drag-and-drop: pointer movement is paused during a held contact.
+
+## Cursor settings
+
+Use left/right on the focused size slider. The label shows the pixel height and
+the preview works even when mouse mode is off. Size and style changes take effect
+without restarting the service or toggling PTT.
+
+Previously saved slider positions are mapped to the new 16–32 px range; select
+the middle position for the recommended **24 px** size. Sizes are physical pixels,
+so changing display density does not enlarge the cursor.
+
+## Optional screen-density hotkey
+
+This changes **logical DPI / interface scale**, like `wm density`; the display's
+physical resolution stays the same.
+
+1. In MATVT settings, choose **Compact DPI** — **100** by default. Values must be
+   at least **72** and below the device's factory density.
+2. Keep key code **290**, enter another Android key code, or use **Detect key**
+   with mouse mode off.
+3. Turn on **Enable density hotkey** and save. The feature is **off by default**.
+4. While mouse or scroll mode is enabled, hold the selected key to switch scale.
+
+On Sonim, disable **Settings → Accessibility → Voice Command**: the stock firmware
+also assigns that action to a long Speaker press. MATVT reserves the whole key
+press outside calls while this feature and mouse mode are enabled. It bypasses
+the hotkey when Android reports ringing, in-call, communication/VoIP or an unknown
+audio mode, so the phone can use its speaker control.
+
+With the feature enabled, entering mouse mode takes ownership of display density,
+including an existing manual override. On exit, it restores the **factory value**,
+not that earlier override. After a hard-killed executor or power loss, a readable
+compact scale may remain until the next app/service startup recovers the marker.
+The feature uses the same root executor as touch input.
+
+## Lock-screen fix
+
+The XP5900 could fail to unlock on the first screen presentation after a synthetic
+tap, even when the MATVT service was disabled during the tap. Simply disabling
+mouse mode on screen-off was not enough.
+
+MATVT now waits for the receiving app to process UP/CANCEL, then requests keyboard
+navigation with `setInTouchMode(false)` when mouse mode ends or the executor closes.
+The owner confirmed the fix on the phone, including locking with the mouse still
+enabled. The lock screen remains in control of unlocking through **star (`*`)**.
+
+After unlocking, hold PTT again to enable the mouse. See the
+[lock-screen investigation and regression checks](docs/sonim-xp5900.md#lock-screen-handling)
+for details.
+
+## Build from source
+
+```sh
+git clone --branch phone-port https://github.com/justAndrej/matvt-root.git
+cd matvt-root
+```
+
+Verified build configuration:
+
+| Component | Version |
+| --- | --- |
+| JDK | **11** |
+| Gradle wrapper | **7.6.6** |
+| Android Gradle Plugin | **7.1.0** |
+| Android compile / target SDK | **29** |
+| Android Build Tools | **30.0.3** |
+
+Open the project in Android Studio, select JDK 11 for Gradle and configure the
+Android SDK location. Alternatively, set `sdk.dir` in the ignored `local.properties`
+file and run with `JAVA_HOME` pointing to JDK 11:
+
+```sh
+bash ./gradlew --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug
+```
+
+On macOS with a registered JDK 11 installation:
+
+```sh
+JAVA_HOME=$(/usr/libexec/java_home -v 11) \
+  bash ./gradlew --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug
+```
+
+- Installable debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
+- `:app:assembleRelease` produces `app/build/outputs/apk/release/app-release-unsigned.apk`;
+  sign it before installation.
+- New local Android Studio files under `.idea/` are ignored; existing tracked
+  project settings remain versioned.
+
+## Verification and troubleshooting
+
+Automated tests cover event ordering, continuous holds, cancellation, shutdown,
+density recovery, key conflicts, lock-screen key handling and keyboard-mode restoration.
+Emulator checks exercise real touch events, DPI changes and process termination.
+Root clicking, continuous holds and the unlock fix have also been confirmed on
+the XP5900. See the [verification notes](docs/sonim-xp5900.md#verification).
+
+- **Root request fails:** grant root to MATVT, then hold PTT to retry. The app falls
+  back to normal D-pad control on a root error.
+- **A saved key differs from the default:** disable **Override Activation Key**
+  for PTT 289; density has its own independently configurable key.
+- **Density stayed compact after a crash:** open MATVT with mouse mode off or
+  reconnect its accessibility service. Manual reset: `adb shell wm density reset`.
+- **Useful Logcat tags:** `MATVT-Root`, `MATVT-InputMode`, `MATVT-Screen`,
+  `MATVT-Density`. Keyboard cleanup logs `KEYBOARD_MODE_RESTORED`.
+- **Standalone lint:** the inherited target SDK 29 triggers
+  `ExpiredTargetSdkVersion`, a Google Play publishing check. APK assembly and unit
+  tests run independently of that check.
+
+When reporting a problem with this fork, include the phone/Android version,
+tested commit, button codes and relevant logs, and identify the `phone-port` build.
+
+## Credits
+
+- [virresh/matvt](https://github.com/virresh/matvt) — the original project and phone port.
+- [EVA Facial Mouse](https://github.com/cmauri/eva_facial_mouse) — original design inspiration.
+- [sweenwolf](https://github.com/sweenwolf) and [greatjack1](https://github.com/greatjack1)
+  — upstream remote/phone contributions; TechDoctorUK — upstream demonstrations.
+- [All upstream contributors and credits](https://github.com/virresh/matvt#credits).
+- [Upstream GPL-3.0 license](https://github.com/virresh/matvt/blob/master/LICENSE).
