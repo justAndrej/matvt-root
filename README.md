@@ -1,5 +1,7 @@
 # MATVT
 
+**[Download the latest release (APK)](https://github.com/justAndrej/matvt-root/releases/latest)**
+
 A fork of [virresh/matvt](https://github.com/virresh/matvt), developing a root-enabled
 virtual mouse for Android keypad phones, primarily the **Sonim XP5900 / XP5plus**.
 The application is displayed as **MATVT**.
