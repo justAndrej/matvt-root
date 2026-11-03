@@ -48,7 +48,7 @@ unlocking happens mid-hold. A fresh press is required to activate MATVT afterwar
 Suspension discards the old engine, overlay, activation timers and consumed-key
 state, so a delayed root-ready callback cannot re-enable the mouse after locking.
 
-### Experimental keyboard-mode restoration
+### Keyboard-mode restoration — verified on XP5900
 
 The XP5900 unlock issue was reproduced after both `input touchscreen tap` and
 `input mouse tap`, with the MATVT accessibility service disabled. Moving the
@@ -56,8 +56,8 @@ cursor alone did not reproduce it. During one failed unlock, the dispatcher had
 no active touch and the global `mInTouchMode` flag was already false, so the exact
 Sonim keyguard defect is still unconfirmed.
 
-This build tests restoring keyboard navigation **before the next lock-screen
-appearance**. When mouse mode is turned off, `DPAD_MODE` is queued after the
+The fix restores keyboard navigation **before the next lock-screen appearance**.
+When mouse mode is turned off, `DPAD_MODE` is queued after the
 contact's terminal event. It cancels any remaining contact, restores owned density,
 then calls the public `Instrumentation.setInTouchMode(false)` SDK wrapper in the
 existing root executor. On Android 11 it invokes `IWindowManager.setInTouchMode(false)`;
@@ -81,9 +81,12 @@ Diagnostics:
 On an emulator, a test view deliberately delayed UP/CANCEL handling by 350 ms.
 The executor waited for that handler to finish, then successfully changed touch
 mode to keyboard mode. QUIT/EOF restoration and density-only recovery isolation
-were also checked. The Android 11/Sonim branch still needs an on-device trial.
+were also checked. The device owner confirmed that this fixes unlocking on the
+XP5900 in both cases: mouse mode still enabled at lock time, and mouse mode
+already disabled before locking. This confirms the fix in those scenarios;
+the precise underlying Sonim firmware defect has not been established.
 
-For that trial, begin after a reboot and keep the density hotkey disabled to
+For regression testing, begin after a reboot and keep the density hotkey disabled to
 isolate this change. Tap in TouchDetector using MATVT, turn mouse mode off with
 PTT, then lock/wake and try the first hold of **star (`*`)**. Repeat several times.
 Separately check locking directly while mouse mode is still on: that exercises
