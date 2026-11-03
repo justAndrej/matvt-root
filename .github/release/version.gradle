@@ -1,0 +1,45 @@
+// CI-only version injection for AGP 7.1+; the selected source tree is not edited.
+def releaseName = System.getenv('MATVT_RELEASE_VERSION')
+def releaseCodeText = System.getenv('MATVT_RELEASE_CODE')
+if (!releaseName || !(releaseCodeText ==~ /[0-9]+/)) {
+    throw new GradleException('MATVT_RELEASE_VERSION and numeric MATVT_RELEASE_CODE are required')
+}
+def releaseCode = Long.parseLong(releaseCodeText)
+if (releaseCode < 1 || releaseCode > 2100000000) {
+    throw new GradleException('MATVT_RELEASE_CODE must be between 1 and 2100000000')
+}
+
+def configureRepositories = { repositories ->
+    // Older branches add JCenter in root allprojects blocks before their children
+    // are evaluated. Handle both existing repositories and later additions.
+    def isJCenter = { repository ->
+        repository instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository &&
+                repository.url.host == 'jcenter.bintray.com'
+    }
+    repositories.removeAll { isJCenter(it) }
+    repositories.whenObjectAdded { repository ->
+        if (isJCenter(repository)) repositories.remove(repository)
+    }
+    def central = repositories.mavenCentral()
+    repositories.remove(central)
+    repositories.addFirst(central)
+    repositories.google()
+}
+
+gradle.beforeProject { project ->
+    configureRepositories(project.buildscript.repositories)
+    configureRepositories(project.repositories)
+    project.pluginManager.withPlugin('com.android.application') {
+        project.extensions.getByName('androidComponents').finalizeDsl { androidDsl ->
+            def originalCode = androidDsl.defaultConfig.versionCode ?: 0
+            if (releaseCode < originalCode) {
+                throw new GradleException("Release versionCode must not be below the source default (${originalCode})")
+            }
+            androidDsl.defaultConfig.versionName = releaseName
+            androidDsl.defaultConfig.versionCode = (int) releaseCode
+            // These root APKs are sideloaded from GitHub, not submitted to Google Play.
+            // Keep all other fatal lint checks enabled.
+            androidDsl.lintOptions.disable('ExpiredTargetSdkVersion')
+        }
+    }
+}

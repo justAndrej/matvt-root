@@ -17,6 +17,21 @@ The application is displayed as **MATVT**.
 - [Phone version: README, installation and controls](https://github.com/justAndrej/matvt-root/blob/phone-port/README.md)
 - [Source code — `phone-port`](https://github.com/justAndrej/matvt-root/tree/phone-port)
 - [Sonim implementation and verification notes](https://github.com/justAndrej/matvt-root/blob/phone-port/docs/sonim-xp5900.md)
+- [Manual APK build and GitHub Release setup](https://github.com/justAndrej/matvt-root/blob/phone-port/docs/github-releases.md)
+
+## Manual builds and releases
+
+After configuring the signing secrets, open **Actions → Build and publish APK →
+Run workflow**. Leave **Use workflow from** on `master`, and choose the application
+branch in **source_branch** (default `phone-port`). Supply a release tag and an
+increasing Android versionCode; the workflow tests, builds, signs and publishes
+the APK at the exact source commit.
+
+The release APK uses the existing Android Studio signing key from GitHub Secrets.
+See the [setup guide](https://github.com/justAndrej/matvt-root/blob/phone-port/docs/github-releases.md)
+for the four secrets and release options.
+
+## Branches
 
 | Branch | Purpose |
 | --- | --- |
